@@ -42,13 +42,63 @@ log the first client cannot read, and nothing would say so until somebody
 tried. Extracting the wire format into that package — it had been a private
 method inside the app — was the first thing this prototype changed.
 
+## The tools
+
+| Tool | Answers |
+| --- | --- |
+| `search_library` | Items whose title, source, summary or address mention something |
+| `recent_items` | The most recently synced items |
+| `library_summary` | How much is here, how much is summarized, how far the log has been read |
+
+Read-only, deliberately, for as long as this is a prototype. A tool that wrote
+to the log would be a second writer of a format the app owns, and getting that
+wrong corrupts a library rather than returning a bad answer.
+
 ## Running it
 
+Configuration is three values: the sync server, a device token, and the master
+key. Put them in a file rather than the environment — `docker inspect` prints
+an environment, and a file can be mounted read-only.
+
 ```sh
-dart pub get
+cp allreader-mcp.example.json allreader-mcp.local.json   # then fill it in
+```
+
+The device token comes from a paired device (`POST /enroll`) or from
+`allreader-sync pair` for the first one, and is revocable. The master key is
+the value the pairing QR carries — **it is not revocable, and anything holding
+it can read everything.**
+
+### As a subprocess, for a local MCP client
+
+```sh
+dart run bin/allreader_mcp.dart            # stdio, which is what clients expect
+```
+
+### In Docker
+
+```sh
+docker compose up -d
+curl http://127.0.0.1:8100/health
+```
+
+HTTP rather than stdio, because a container is not a subprocess its client can
+start. The port is bound to localhost and **is not authenticated**: anything
+that can reach it reads the whole library in plaintext. The encryption ends at
+this process — that is what this server is for, and why it needs a boundary of
+its own.
+
+If the sync server is another container on the same host, put both on one
+network and use its service name; `host.docker.internal` will not reach a sync
+server that is bound to localhost, which its own compose does on purpose. The
+compose file has the block to uncomment.
+
+## Testing it
+
+```sh
 dart test
 ```
 
-There is no entry point yet: the mirror and its tests are the part that had to
-be proved first, because everything else depends on being able to read the log
-at all.
+Fifteen tests over the mirror and the configuration. The end-to-end path —
+container, real sync server, real encrypted entries, tools called over MCP —
+has been driven by hand and is not yet a script.
