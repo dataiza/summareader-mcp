@@ -15,6 +15,7 @@ class McpConfig {
     required this.deviceToken,
     required this.masterKey,
     required this.cacheDir,
+    this.httpToken,
   });
 
   final String serverUrl;
@@ -23,6 +24,13 @@ class McpConfig {
 
   /// Where the decrypted copy lives. Plaintext, deliberately a cache.
   final Directory cacheDir;
+
+  /// A bearer token callers of the HTTP transport must present.
+  ///
+  /// Null means anyone who can reach the port can read the whole library,
+  /// which is tolerable bound to localhost and nowhere else. The server says
+  /// so at startup rather than leaving it to be discovered.
+  final String? httpToken;
 
   /// Reads configuration from a file, with the environment as an override.
   ///
@@ -55,11 +63,12 @@ class McpConfig {
       return value is String && value.trim().isNotEmpty ? value.trim() : null;
     }
 
+    final token = pick('http_token', 'ALLREADER_MCP_TOKEN');
     final url = pick('server', 'ALLREADER_SYNC_URL');
-    final token = pick('token', 'ALLREADER_DEVICE_TOKEN');
+    final deviceToken = pick('token', 'ALLREADER_DEVICE_TOKEN');
     final key = pick('master_key', 'ALLREADER_MASTER_KEY');
 
-    if (url == null || token == null || key == null) {
+    if (url == null || deviceToken == null || key == null) {
       throw McpConfigError(
         'Needs a sync server, a device token and a master key. '
         'Put them in ${source.path} as {"server": …, "token": …, '
@@ -70,7 +79,8 @@ class McpConfig {
 
     return McpConfig(
       serverUrl: url,
-      deviceToken: token,
+      deviceToken: deviceToken,
+      httpToken: token,
       masterKey: _masterKeyFrom(key),
       cacheDir: cacheDir ??
           Directory(env['ALLREADER_MCP_CACHE'] ?? '/cache'),

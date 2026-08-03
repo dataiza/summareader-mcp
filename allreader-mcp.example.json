@@ -1,11 +1,10 @@
 {
   "_comment": "Copy to allreader-mcp.local.json and fill in. That name is gitignored.",
-
   "server": "https://sync.example.com",
-
   "_token": "From a paired device: POST /enroll on the sync server, or `allreader-sync pair` for the first one. Revocable.",
   "token": "",
-
-  "_master_key": "The 32-byte library key, base64 — the same value the pairing QR carries. NOT revocable: anything holding this can read everything, for as long as it holds it.",
-  "master_key": ""
+  "_master_key": "The 32-byte library key, base64 \u2014 the same value the pairing QR carries. NOT revocable: anything holding this can read everything, for as long as it holds it.",
+  "master_key": "",
+  "_http_token": "Required to call the MCP HTTP port. Without it the port is open to anyone who can reach it and serves the whole library in plaintext; the server warns at startup. Any long random string: openssl rand -base64 32",
+  "http_token": ""
 }

@@ -33,6 +33,9 @@ services:
       - mcp-cache:/cache
 
     healthcheck:
+      # /health needs no token: it says whether the process is up and nothing
+      # about what it holds, and a health check that needs a secret is one
+      # that breaks the day the secret rotates.
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8100/health"]
       interval: 30s
       timeout: 5s

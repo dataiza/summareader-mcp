@@ -83,10 +83,14 @@ curl http://127.0.0.1:8100/health
 ```
 
 HTTP rather than stdio, because a container is not a subprocess its client can
-start. The port is bound to localhost and **is not authenticated**: anything
-that can reach it reads the whole library in plaintext. The encryption ends at
-this process — that is what this server is for, and why it needs a boundary of
-its own.
+start.
+
+Set `http_token` in the config and callers must present it as a bearer token.
+Without one the port is open to anyone who can reach it, and the server says
+so at startup — the encryption ends at this process, which is what it is for
+and why it needs a boundary of its own. `/health` never needs the token: it
+reports whether the process is up and nothing about what it holds, and a
+health check that needs a secret breaks the day the secret rotates.
 
 If the sync server is another container on the same host, put both on one
 network and use its service name; `host.docker.internal` will not reach a sync
@@ -99,6 +103,12 @@ compose file has the block to uncomment.
 dart test
 ```
 
-Fifteen tests over the mirror and the configuration. The end-to-end path —
-container, real sync server, real encrypted entries, tools called over MCP —
-has been driven by hand and is not yet a script.
+Twenty-three tests over the mirror, its cache and the configuration. The
+end-to-end path — container, real sync server, real encrypted entries, tools
+called over MCP — has been driven by hand and is not yet a script.
+
+The decrypted mirror is kept in `/cache` between runs, so a restart asks for
+what has arrived since rather than re-reading and re-decrypting the whole log.
+It is still only a cache: deleting the volume costs one re-read and no data,
+and anything unreadable in it — corrupt, half-written, or from a newer format
+— is treated as empty rather than as an error.

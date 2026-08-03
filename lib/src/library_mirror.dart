@@ -64,6 +64,18 @@ class LibraryMirror {
 
   Iterable<MirroredItem> get items => _items.values;
 
+  /// Puts back what a previous run had read.
+  ///
+  /// The cursor comes with the items and not separately: a cursor without its
+  /// items would skip the log entries that built them, leaving a mirror that
+  /// is permanently missing everything before the restart and never notices.
+  void restore({required int cursor, required List<MirroredItem> items}) {
+    this.cursor = cursor;
+    _items
+      ..clear()
+      ..addEntries(items.map((item) => MapEntry(item.id, item)));
+  }
+
   /// Reads everything new and decrypts it.
   ///
   /// An entry that will not decrypt is skipped rather than fatal: one bad
