@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:allreader_core/allreader_core.dart';
-import 'package:allreader_mcp/src/library_mirror.dart';
-import 'package:allreader_mcp/src/mirror_store.dart';
+import 'package:summareader_core/summareader_core.dart';
+import 'package:summareader_mcp/src/library_mirror.dart';
+import 'package:summareader_mcp/src/mirror_store.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -12,7 +12,7 @@ void main() {
   late SyncKeys keys;
 
   setUp(() async {
-    dir = await Directory.systemTemp.createTemp('allreader-mcp-cache');
+    dir = await Directory.systemTemp.createTemp('summareader-mcp-cache');
     store = MirrorStore(dir);
     keys = await SyncKeys.derive(MasterKey.generate());
   });

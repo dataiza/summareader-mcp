@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:allreader_core/allreader_core.dart';
+import 'package:summareader_core/summareader_core.dart';
 
 /// Everything this server needs to be a device.
 ///
@@ -47,7 +47,7 @@ class McpConfig {
     Directory? cacheDir,
   }) async {
     final env = environment ?? Platform.environment;
-    final path = env['ALLREADER_MCP_CONFIG'] ?? '/config/allreader-mcp.json';
+    final path = env['ALLREADER_MCP_CONFIG'] ?? '/config/summareader-mcp.json';
     final source = file ?? File(path);
 
     Map<String, dynamic> stored = const {};

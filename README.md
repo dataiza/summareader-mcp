@@ -1,6 +1,6 @@
-# allreader-mcp
+# summareader-mcp
 
-An MCP server that pairs with an AllReader sync server **as a device**, keeps a
+An MCP server that pairs with a SummaReader sync server **as a device**, keeps a
 decrypted copy of the library, and answers questions about it.
 
 Prototype. It reads; it does not yet write.
@@ -34,7 +34,7 @@ it. Two consequences worth stating rather than discovering:
 ## Shared code, not copied code
 
 The envelope format, the key hierarchy and the sync client come from
-`allreader_core`, a pure-Dart package in the app's repository, by path
+`summareader_core`, a pure-Dart package in the app's repository, by path
 dependency. None of it is reimplemented here.
 
 That is not tidiness. A second client that packs its bytes differently writes a
@@ -61,18 +61,18 @@ key. Put them in a file rather than the environment — `docker inspect` prints
 an environment, and a file can be mounted read-only.
 
 ```sh
-cp allreader-mcp.example.json allreader-mcp.local.json   # then fill it in
+cp summareader-mcp.example.json summareader-mcp.local.json   # then fill it in
 ```
 
 The device token comes from a paired device (`POST /enroll`) or from
-`allreader-sync pair` for the first one, and is revocable. The master key is
+`summareader-sync pair` for the first one, and is revocable. The master key is
 the value the pairing QR carries — **it is not revocable, and anything holding
 it can read everything.**
 
 ### As a subprocess, for a local MCP client
 
 ```sh
-dart run bin/allreader_mcp.dart            # stdio, which is what clients expect
+dart run bin/summareader_mcp.dart            # stdio, which is what clients expect
 ```
 
 ### In Docker

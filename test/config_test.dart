@@ -1,15 +1,15 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:allreader_core/allreader_core.dart';
-import 'package:allreader_mcp/src/config.dart';
+import 'package:summareader_core/summareader_core.dart';
+import 'package:summareader_mcp/src/config.dart';
 import 'package:test/test.dart';
 
 void main() {
   late Directory dir;
 
   setUp(() async {
-    dir = await Directory.systemTemp.createTemp('allreader-mcp-config');
+    dir = await Directory.systemTemp.createTemp('summareader-mcp-config');
   });
   tearDown(() => dir.delete(recursive: true));
 

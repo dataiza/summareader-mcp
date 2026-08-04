@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:allreader_core/allreader_core.dart';
+import 'package:summareader_core/summareader_core.dart';
 
 /// One item, as this server knows it.
 ///

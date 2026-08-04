@@ -1,7 +1,7 @@
 # Build.
 #
 # The build context has to be the parent directory, because this package
-# depends on allreader_core by path — it lives in the app's repository, and a
+# depends on summareader_core by path — it lives in the app's repository, and a
 # context rooted here could not see it. Compose does that; a bare `docker
 # build .` here will not.
 FROM dart:stable AS build
@@ -10,14 +10,14 @@ WORKDIR /src
 
 # The shared protocol package, copied first: it changes far less often than
 # this server does, so a change here does not re-resolve it.
-COPY allreader/packages/allreader_core/ ./allreader/packages/allreader_core/
+COPY allreader/packages/summareader_core/ ./allreader/packages/summareader_core/
 
-COPY allreader-mcp/pubspec.yaml ./allreader-mcp/
-WORKDIR /src/allreader-mcp
+COPY summareader-mcp/pubspec.yaml ./summareader-mcp/
+WORKDIR /src/summareader-mcp
 RUN dart pub get
 
-COPY allreader-mcp/ ./
-RUN dart pub get --offline && dart compile exe bin/allreader_mcp.dart -o /allreader-mcp
+COPY summareader-mcp/ ./
+RUN dart pub get --offline && dart compile exe bin/summareader_mcp.dart -o /summareader-mcp
 
 # Run.
 #
@@ -30,17 +30,17 @@ FROM debian:stable-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --uid 10001 --create-home --home-dir /cache allreader
+    && useradd --uid 10001 --create-home --home-dir /cache summareader
 
-COPY --from=build /allreader-mcp /usr/local/bin/allreader-mcp
+COPY --from=build /summareader-mcp /usr/local/bin/summareader-mcp
 
 # The decrypted copy. A cache: rebuildable from the log, safe to delete, and
 # never the only copy of anything.
 VOLUME /cache
-USER allreader
+USER summareader
 
 EXPOSE 8100
 
 # HTTP rather than stdio, because a container is not a subprocess its client
 # can start.
-CMD ["allreader-mcp", "--transport=http", "--port=8100"]
+CMD ["summareader-mcp", "--transport=http", "--port=8100"]

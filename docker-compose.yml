@@ -1,6 +1,6 @@
-# An MCP server over your AllReader library.
+# An MCP server over your SummaReader library.
 #
-#   cp allreader-mcp.example.json ../allreader-mcp.local.json   # then fill it in
+#   cp summareader-mcp.example.json ../summareader-mcp.local.json   # then fill it in
 #   docker compose up -d
 #
 # Run it from this directory. The build context is the parent, because this
@@ -9,10 +9,10 @@
 services:
   mcp:
     build:
-      # One level up, so the build can see ../allreader/packages/allreader_core.
+      # One level up, so the build can see ../allreader/packages/summareader_core.
       context: ..
-      dockerfile: allreader-mcp/Dockerfile
-    image: allreader-mcp:local
+      dockerfile: summareader-mcp/Dockerfile
+    image: summareader-mcp:local
     restart: unless-stopped
 
     ports:
@@ -27,7 +27,7 @@ services:
       # The secrets, read-only, as a file rather than environment variables:
       # `docker inspect` prints an environment, and a mounted file can be
       # given permissions.
-      - ./allreader-mcp.local.json:/config/allreader-mcp.json:ro
+      - ./summareader-mcp.local.json:/config/summareader-mcp.json:ro
       # The decrypted cache. Deleting this volume costs nothing but a re-read
       # of the log.
       - mcp-cache:/cache
@@ -75,4 +75,4 @@ volumes:
 #     external: true
 #     # Whatever `docker network ls` calls the sync server's network — by
 #     # default the project directory plus _default.
-#     name: allreader-sync-server_default
+#     name: summareader-sync-server_default

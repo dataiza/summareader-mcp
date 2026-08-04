@@ -2,15 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:allreader_core/allreader_core.dart';
-import 'package:allreader_mcp/src/config.dart';
-import 'package:allreader_mcp/src/library_mirror.dart';
-import 'package:allreader_mcp/src/mirror_store.dart';
-import 'package:allreader_mcp/src/tools.dart';
+import 'package:summareader_core/summareader_core.dart';
+import 'package:summareader_mcp/src/config.dart';
+import 'package:summareader_mcp/src/library_mirror.dart';
+import 'package:summareader_mcp/src/mirror_store.dart';
+import 'package:summareader_mcp/src/tools.dart';
 import 'package:args/args.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 
-/// An MCP server over an AllReader library.
+/// An MCP server over a SummaReader library.
 ///
 /// Two transports, for two quite different situations. **stdio** is how a
 /// local MCP client runs a server: as a subprocess it owns, with no port and
@@ -28,7 +28,7 @@ Future<void> main(List<String> arguments) async {
 
   final args = parser.parse(arguments);
   if (args.flag('help')) {
-    stdout.writeln('allreader-mcp — an MCP server over your reading library.');
+    stdout.writeln('summareader-mcp — an MCP server over your reading library.');
     stdout.writeln(parser.usage);
     return;
   }
@@ -41,7 +41,7 @@ Future<void> main(List<String> arguments) async {
   } on McpConfigError catch (e) {
     // To stderr, always: on stdio the protocol owns stdout, and a message
     // printed there would be parsed as a malformed frame rather than read.
-    stderr.writeln('allreader-mcp: $e');
+    stderr.writeln('summareader-mcp: $e');
     exitCode = 64;
     return;
   }
@@ -70,7 +70,7 @@ Future<void> main(List<String> arguments) async {
   Timer.periodic(const Duration(minutes: 5), (_) => _pull(mirror, store));
 
   final server = McpServer(
-    const Implementation(name: 'allreader', version: '0.1.0'),
+    const Implementation(name: 'summareader', version: '0.1.0'),
     options: const McpServerOptions(
       capabilities: ServerCapabilities(tools: ServerCapabilitiesTools()),
     ),
@@ -88,7 +88,7 @@ Future<void> _pull(LibraryMirror mirror, MirrorStore store) async {
   try {
     final applied = await mirror.pull();
     if (applied > 0) {
-      stderr.writeln('allreader-mcp: read $applied entries');
+      stderr.writeln('summareader-mcp: read $applied entries');
       // Only when something changed. Rewriting an identical file on every
       // tick is disk churn for nothing.
       await store.save(mirror);
@@ -96,7 +96,7 @@ Future<void> _pull(LibraryMirror mirror, MirrorStore store) async {
   } catch (e) {
     // A sync server that is down is a reason to answer from what we have,
     // not a reason to stop answering.
-    stderr.writeln('allreader-mcp: could not reach the sync server: $e');
+    stderr.writeln('summareader-mcp: could not reach the sync server: $e');
   }
 }
 
@@ -114,13 +114,13 @@ Future<void> _serveHttp(McpServer server, int port, String? token) async {
   await server.connect(transport);
 
   final http = await HttpServer.bind(InternetAddress.anyIPv4, port);
-  stderr.writeln('allreader-mcp: listening on $port');
+  stderr.writeln('summareader-mcp: listening on $port');
   if (token == null) {
     // Said at startup rather than left to be discovered. The encryption ends
     // at this process — that is what it is for — so an open port here is the
     // whole library in plaintext to anybody who can reach it.
     stderr.writeln(
-      'allreader-mcp: WARNING — no http_token set, so this port is open to '
+      'summareader-mcp: WARNING — no http_token set, so this port is open to '
       'anyone who can reach it, and it serves the entire library in '
       'plaintext. Only acceptable bound to localhost.',
     );

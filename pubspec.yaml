@@ -1,6 +1,6 @@
-name: allreader_mcp
+name: summareader_mcp
 description: >-
-  An MCP server that pairs with an AllReader sync server as a device, keeps a
+  An MCP server that pairs with a SummaReader sync server as a device, keeps a
   decrypted copy of the library, and answers questions about it.
 version: 0.1.0
 publish_to: none
@@ -11,8 +11,8 @@ environment:
 dependencies:
   # The protocol, shared with the app rather than reimplemented. Encryption
   # written twice is encryption that differs in one of the two.
-  allreader_core:
-    path: ../allreader/packages/allreader_core
+  summareader_core:
+    path: ../allreader/packages/summareader_core
 
   args: ^2.6.0
   mcp_dart: ^2.4.0

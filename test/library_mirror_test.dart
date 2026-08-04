@@ -1,7 +1,7 @@
 import 'dart:convert';
 
-import 'package:allreader_core/allreader_core.dart';
-import 'package:allreader_mcp/src/library_mirror.dart';
+import 'package:summareader_core/summareader_core.dart';
+import 'package:summareader_mcp/src/library_mirror.dart';
 import 'package:test/test.dart';
 
 /// A sync server that only remembers what it was told.
