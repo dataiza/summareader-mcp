@@ -2,4 +2,6 @@
 pubspec.lock
 build/
 
+summareader-mcp.local.json
+# The name this file had before the rename, so an old one stays ignored.
 allreader-mcp.local.json
