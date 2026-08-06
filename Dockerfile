@@ -10,7 +10,7 @@ WORKDIR /src
 
 # The shared protocol package, copied first: it changes far less often than
 # this server does, so a change here does not re-resolve it.
-COPY allreader/packages/summareader_core/ ./allreader/packages/summareader_core/
+COPY summareader/packages/summareader_core/ ./summareader/packages/summareader_core/
 
 COPY summareader-mcp/pubspec.yaml ./summareader-mcp/
 WORKDIR /src/summareader-mcp

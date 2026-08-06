@@ -47,7 +47,7 @@ void main() {
           'token': 'a-token',
           'master_key': key,
         }),
-        environment: {'ALLREADER_SYNC_URL': 'https://from-env.example'},
+        environment: {'SUMMAREADER_SYNC_URL': 'https://from-env.example'},
         cacheDir: dir,
       );
 
@@ -58,9 +58,9 @@ void main() {
       final config = await McpConfig.load(
         file: File('${dir.path}/absent.json'),
         environment: {
-          'ALLREADER_SYNC_URL': 'https://sync.example',
-          'ALLREADER_DEVICE_TOKEN': 'a-token',
-          'ALLREADER_MASTER_KEY': key,
+          'SUMMAREADER_SYNC_URL': 'https://sync.example',
+          'SUMMAREADER_DEVICE_TOKEN': 'a-token',
+          'SUMMAREADER_MASTER_KEY': key,
         },
         cacheDir: dir,
       );
@@ -82,7 +82,7 @@ void main() {
         throwsA(isA<McpConfigError>().having(
           (e) => e.message,
           'message',
-          allOf(contains('ALLREADER_SYNC_URL'), contains('master key')),
+          allOf(contains('SUMMAREADER_SYNC_URL'), contains('master key')),
         )),
       );
     });
@@ -118,6 +118,37 @@ void main() {
         throwsA(isA<McpConfigError>()
             .having((e) => e.message, 'message', contains('16'))),
       );
+    });
+  });
+
+  group('the names these had before the app was renamed', () {
+    test('still work, because they are in somebody\'s compose file', () async {
+      // An environment variable is written once and not read again. Renaming
+      // one without a fallback means a deployment that has been running for
+      // months comes back after a pull saying it needs a sync server, with
+      // nothing to say the name moved.
+      final config = await McpConfig.load(
+        environment: {
+          'ALLREADER_SYNC_URL': 'https://old.example',
+          'ALLREADER_DEVICE_TOKEN': 'a-token',
+          'ALLREADER_MASTER_KEY': base64Url.encode(List.filled(32, 7)),
+        },
+      );
+
+      expect(config.serverUrl, 'https://old.example');
+    });
+
+    test('and the new name wins where both are set', () async {
+      final config = await McpConfig.load(
+        environment: {
+          'ALLREADER_SYNC_URL': 'https://old.example',
+          'SUMMAREADER_SYNC_URL': 'https://new.example',
+          'SUMMAREADER_DEVICE_TOKEN': 'a-token',
+          'SUMMAREADER_MASTER_KEY': base64Url.encode(List.filled(32, 7)),
+        },
+      );
+
+      expect(config.serverUrl, 'https://new.example');
     });
   });
 }

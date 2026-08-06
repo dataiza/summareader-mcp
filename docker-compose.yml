@@ -9,7 +9,7 @@
 services:
   mcp:
     build:
-      # One level up, so the build can see ../allreader/packages/summareader_core.
+      # One level up, so the build can see ../summareader/packages/summareader_core.
       context: ..
       dockerfile: summareader-mcp/Dockerfile
     image: summareader-mcp:local

@@ -23,7 +23,7 @@ Future<void> main(List<String> arguments) async {
         defaultsTo: 'stdio',
         help: 'stdio for a local client; http inside a container.')
     ..addOption('port', defaultsTo: '8100')
-    ..addOption('config', help: 'Overrides ALLREADER_MCP_CONFIG.')
+    ..addOption('config', help: 'Overrides SUMMAREADER_MCP_CONFIG.')
     ..addFlag('help', negatable: false);
 
   final args = parser.parse(arguments);

@@ -47,7 +47,7 @@ class McpConfig {
     Directory? cacheDir,
   }) async {
     final env = environment ?? Platform.environment;
-    final path = env['ALLREADER_MCP_CONFIG'] ?? '/config/summareader-mcp.json';
+    final path = env['SUMMAREADER_MCP_CONFIG'] ?? env['ALLREADER_MCP_CONFIG'] ?? '/config/summareader-mcp.json';
     final source = file ?? File(path);
 
     Map<String, dynamic> stored = const {};
@@ -56,24 +56,34 @@ class McpConfig {
       if (decoded is Map<String, dynamic>) stored = decoded;
     }
 
+    /// The variable, the name it had before the app was renamed, then the
+    /// file.
+    ///
+    /// The old names keep working on purpose. An environment variable is
+    /// somebody's compose file or unit file, written once and not read again
+    /// — renaming it without a fallback means a deployment that has been
+    /// running for months comes back after a pull with "needs a sync server"
+    /// and no clue that the name moved.
     String? pick(String key, String envKey) {
-      final fromEnv = env[envKey]?.trim();
-      if (fromEnv != null && fromEnv.isNotEmpty) return fromEnv;
+      for (final name in [envKey, envKey.replaceFirst('SUMMAREADER_', 'ALLREADER_')]) {
+        final fromEnv = env[name]?.trim();
+        if (fromEnv != null && fromEnv.isNotEmpty) return fromEnv;
+      }
       final value = stored[key];
       return value is String && value.trim().isNotEmpty ? value.trim() : null;
     }
 
-    final token = pick('http_token', 'ALLREADER_MCP_TOKEN');
-    final url = pick('server', 'ALLREADER_SYNC_URL');
-    final deviceToken = pick('token', 'ALLREADER_DEVICE_TOKEN');
-    final key = pick('master_key', 'ALLREADER_MASTER_KEY');
+    final token = pick('http_token', 'SUMMAREADER_MCP_TOKEN');
+    final url = pick('server', 'SUMMAREADER_SYNC_URL');
+    final deviceToken = pick('token', 'SUMMAREADER_DEVICE_TOKEN');
+    final key = pick('master_key', 'SUMMAREADER_MASTER_KEY');
 
     if (url == null || deviceToken == null || key == null) {
       throw McpConfigError(
         'Needs a sync server, a device token and a master key. '
         'Put them in ${source.path} as {"server": …, "token": …, '
-        '"master_key": …}, or set ALLREADER_SYNC_URL, '
-        'ALLREADER_DEVICE_TOKEN and ALLREADER_MASTER_KEY.',
+        '"master_key": …}, or set SUMMAREADER_SYNC_URL, '
+        'SUMMAREADER_DEVICE_TOKEN and SUMMAREADER_MASTER_KEY.',
       );
     }
 
@@ -83,7 +93,9 @@ class McpConfig {
       httpToken: token,
       masterKey: _masterKeyFrom(key),
       cacheDir: cacheDir ??
-          Directory(env['ALLREADER_MCP_CACHE'] ?? '/cache'),
+          Directory(env['SUMMAREADER_MCP_CACHE'] ??
+              env['ALLREADER_MCP_CACHE'] ??
+              '/cache'),
     );
   }
 }

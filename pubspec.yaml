@@ -12,7 +12,7 @@ dependencies:
   # The protocol, shared with the app rather than reimplemented. Encryption
   # written twice is encryption that differs in one of the two.
   summareader_core:
-    path: ../allreader/packages/summareader_core
+    path: ../summareader/packages/summareader_core
 
   args: ^2.6.0
   mcp_dart: ^2.4.0
