@@ -112,3 +112,24 @@ what has arrived since rather than re-reading and re-decrypting the whole log.
 It is still only a cache: deleting the volume costs one re-read and no data,
 and anything unreadable in it — corrupt, half-written, or from a newer format
 — is treated as empty rather than as an error.
+
+## Metrics
+
+`GET /metrics` on the HTTP transport, in the Prometheus text format, behind the
+same bearer token as the tools. Not behind a second one: a scraper that can
+reach this port can already ask it for the articles themselves, so another
+credential would be ceremony rather than security.
+
+It reports the mirror rather than the library — items held, how many carry a
+summary, how far through the log the cursor is, how long since the last read
+and how many reads failed. Those are the numbers that answer *is the mirror
+keeping up*, which is the only operational question this process has: "up to
+date" and "stopped reading" look identical from an item count alone.
+
+`/health` still needs no token. It says whether the process is up and nothing
+about what it holds, and a health check that needs a secret stops working the
+day the secret rotates.
+
+Nothing in the output names an article. This is the one process that holds the
+library in plaintext, and a label carrying a title would put it somewhere
+nobody expects to find one — a test asserts it.

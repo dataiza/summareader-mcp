@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:summareader_core/summareader_core.dart';
 import 'package:summareader_mcp/src/config.dart';
 import 'package:summareader_mcp/src/library_mirror.dart';
+import 'package:summareader_mcp/src/metrics.dart';
 import 'package:summareader_mcp/src/mirror_store.dart';
 import 'package:summareader_mcp/src/tools.dart';
 import 'package:args/args.dart';
@@ -78,7 +79,12 @@ Future<void> main(List<String> arguments) async {
   LibraryTools(mirror).registerOn(server);
 
   if (args.option('transport') == 'http') {
-    await _serveHttp(server, int.parse(args.option('port')!), config.httpToken);
+    await _serveHttp(
+      server,
+      int.parse(args.option('port')!),
+      config.httpToken,
+      mirror,
+    );
   } else {
     await server.connect(StdioServerTransport());
   }
@@ -87,6 +93,11 @@ Future<void> main(List<String> arguments) async {
 Future<void> _pull(LibraryMirror mirror, MirrorStore store) async {
   try {
     final applied = await mirror.pull();
+    // Counted whether or not anything arrived: "the mirror is up to date" and
+    // "the mirror stopped reading" look identical from the item count alone,
+    // and they are the two states worth telling apart.
+    pulls++;
+    lastPull = DateTime.now();
     if (applied > 0) {
       stderr.writeln('summareader-mcp: read $applied entries');
       // Only when something changed. Rewriting an identical file on every
@@ -96,6 +107,7 @@ Future<void> _pull(LibraryMirror mirror, MirrorStore store) async {
   } catch (e) {
     // A sync server that is down is a reason to answer from what we have,
     // not a reason to stop answering.
+    pullFailures++;
     stderr.writeln('summareader-mcp: could not reach the sync server: $e');
   }
 }
@@ -105,7 +117,12 @@ Future<void> _pull(LibraryMirror mirror, MirrorStore store) async {
 /// Bound to every interface because inside a container localhost means the
 /// container. What is exposed is decided by the port mapping, which is where
 /// that decision belongs.
-Future<void> _serveHttp(McpServer server, int port, String? token) async {
+Future<void> _serveHttp(
+  McpServer server,
+  int port,
+  String? token,
+  LibraryMirror mirror,
+) async {
   final transport = StreamableHTTPServerTransport(
     options: StreamableHTTPServerTransportOptions(
       sessionIdGenerator: () => generateUUID(),
@@ -127,6 +144,33 @@ Future<void> _serveHttp(McpServer server, int port, String? token) async {
   }
 
   await for (final request in http) {
+    // Metrics need the token. Health does not — see below — but these are
+    // counts of somebody's library, and this process is the one place the
+    // library exists in plaintext. Same token as the tools: a scraper that
+    // can reach this port can already ask for the articles themselves, so a
+    // second credential would be ceremony rather than security.
+    if (request.uri.path == '/metrics') {
+      if (!_authorised(request, token)) {
+        request.response
+          ..statusCode = HttpStatus.unauthorized
+          ..headers.set('www-authenticate', 'Bearer')
+          ..write('{"error":"a bearer token is required"}');
+        await request.response.close();
+        continue;
+      }
+      request.response
+        ..statusCode = 200
+        ..headers.contentType = ContentType(
+          'text',
+          'plain',
+          charset: 'utf-8',
+          parameters: {'version': '0.0.4'},
+        )
+        ..write(mcpMetrics(mirror));
+      await request.response.close();
+      continue;
+    }
+
     // Health needs no token: it says whether the process is up and nothing
     // about what it holds, and a health check that needs a secret is a health
     // check that stops working the day the secret rotates.
