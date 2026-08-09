@@ -1,0 +1,28 @@
+[Unit]
+# Installed by scripts/install.sh, which fills in the @…@ placeholders. Edit
+# this file rather than the installed copy: installing again overwrites it.
+Description=SummaReader MCP server
+Documentation=https://github.com/p4ulie/summareader-mcp
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# HTTP, not stdio: a service has no client on the other end of its standard
+# input. A local MCP client that starts its own subprocess wants scripts/run.sh
+# instead, and needs no service at all.
+ExecStart=@BIN@ --transport=http --port=@PORT@
+Environment=SUMMAREADER_MCP_CONFIG=@CONFIG@
+Environment=SUMMAREADER_MCP_CACHE=@CACHE@
+Restart=on-failure
+RestartSec=5
+
+# This process holds the master key and a plaintext copy of the library — the
+# one place in the design where the encryption ends. Everything it does not
+# need to touch is closed off.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=@CACHE@
+
+[Install]
+WantedBy=default.target

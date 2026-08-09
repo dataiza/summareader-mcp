@@ -72,8 +72,33 @@ it can read everything.**
 ### As a subprocess, for a local MCP client
 
 ```sh
-dart run bin/summareader_mcp.dart            # stdio, which is what clients expect
+./scripts/run.sh                             # stdio, which is what clients expect
 ```
+
+### Left running
+
+```sh
+./scripts/install.sh              # compiles it, installs a systemd user service
+./scripts/install.sh --docker     # or runs it as a container — no Dart SDK needed
+./scripts/install.sh --uninstall  # either one, reversed
+```
+
+The service uses the HTTP transport, because a service has no client on the
+other end of its standard input; a local MCP client that starts its own
+subprocess wants `scripts/run.sh` and no service at all. It is a *user*
+service, under `~/.config/systemd/user` — this process holds the master key and
+a plaintext copy of the library, so it belongs to one person and needs no root
+to install or remove. `scripts/summareader-mcp.service` is the definition the
+installer fills in.
+
+The installer refuses to start without a config and warns when `http_token` is
+unset, because that port serves the whole library in plaintext to anything that
+can reach it. The Docker path installs no unit: `restart: unless-stopped` and
+an enabled `docker.service` already restart the container after a reboot.
+
+Running it as a service rather than a container changes what `server` in the
+config has to be: `http://sync:8099` is a Docker service name and resolves only
+on that network.
 
 ### In Docker
 
