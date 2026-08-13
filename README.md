@@ -112,6 +112,19 @@ summareader-mcp serve             # the MCP server (the default)
 
 `--format json` on any of the reading commands, for something else to consume.
 
+The terminal interface has one box rather than a flag for each of those, so it
+reads fields out of what is typed:
+
+```
+source: "Colion Noir" since:7d unread:yes
+title:rust before:2026-08-01
+```
+
+`source`, `title`, `since`, `until`, `read_since`, `read_until`, `unread` and
+`summarized`, with `feed`, `after`, `before` and `read` as aliases. Everything
+else stays words to search for, so a title with a colon in it costs a search
+rather than an error.
+
 ## Reading a library that is already here
 
 If this runs on the same machine as the app — the box that fetches and

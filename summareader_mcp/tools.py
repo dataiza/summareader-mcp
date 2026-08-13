@@ -41,6 +41,49 @@ def parse_since(value: str | None) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
+_FIELD = re.compile(r'\b(\w+):\s*("[^"]*"|\S+)')
+_ALIASES = {
+    "feed": "source",
+    "read": "read_since",
+    "read_after": "read_since",
+    "read_before": "read_until",
+    "before": "until",
+    "after": "since",
+}
+_DATES = ("since", "until", "read_since", "read_until")
+_FLAGS = ("unread", "summarized")
+_NO = {"no", "false", "0", "off"}
+
+
+def parse_query(text: str) -> tuple[str, dict[str, Any]]:
+    """`source: "Colion" since:7d rust` — words, and the fields around them.
+
+    One box is the whole of the terminal interface's search, and typing a
+    field name into it is what people do; it read the lot as words to look
+    for, which finds nothing and says nothing about why.
+
+    Anything that is not a field this knows stays part of the words, so a
+    colon in a title costs a search rather than an error.
+    """
+    filters: dict[str, Any] = {}
+    rest = text
+
+    for match in _FIELD.finditer(text):
+        key = _ALIASES.get(match.group(1).lower(), match.group(1).lower())
+        value = match.group(2).strip('"')
+        if key in _DATES:
+            filters[key] = parse_since(value)
+        elif key in _FLAGS:
+            filters[key] = value.lower() not in _NO
+        elif key in ("source", "title"):
+            filters[key] = value
+        else:
+            continue
+        rest = rest.replace(match.group(0), " ", 1)
+
+    return " ".join(rest.split()), filters
+
+
 def search_library(
     store: Store,
     query: str = "",

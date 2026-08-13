@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from summareader_mcp.cli import _since, main
+from summareader_mcp.tools import parse_query
 from summareader_mcp.config import ConfigError
 from summareader_mcp.protocol.records import LogOp, LogRecord
 from summareader_mcp.report import as_csv, as_markdown
@@ -140,3 +141,23 @@ class TestAPathThatIsNotThere:
         code = main(["--library", str(tmp_path / "nope.sqlite"), "status"])
         assert code == 2
         assert "no library at" in capsys.readouterr().err
+
+
+class TestQueryLanguage:
+    def test_a_field_and_its_value(self):
+        assert parse_query('source: "Colion Noir"') == ("", {"source": "Colion Noir"})
+
+    def test_words_and_fields_together(self):
+        words, filters = parse_query("rust source:hacker unread:yes")
+        assert words == "rust"
+        assert filters["source"] == "hacker" and filters["unread"] is True
+
+    def test_a_colon_that_is_not_a_field_stays_in_the_words(self):
+        # A title with a colon in it is not a filter, and guessing it was one
+        # would silently search for the wrong thing.
+        assert parse_query("ratio 3:1 explained") == ("ratio 3:1 explained", {})
+
+    def test_relative_dates(self):
+        _, filters = parse_query("since:7d")
+        week = (datetime.now(timezone.utc) - filters["since"]).total_seconds()
+        assert abs(week - timedelta(days=7).total_seconds()) < 5

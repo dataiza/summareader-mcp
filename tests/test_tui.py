@@ -128,3 +128,25 @@ async def test_export_with_nothing_matching_says_so(app, tmp_path, monkeypatch):
         await pilot.pause()
         assert "nothing to export" in str(app.query_one("#status", Static).content)
         assert not list(tmp_path.glob("*.md"))
+
+
+async def test_a_field_typed_into_the_box_filters_by_it(app):
+    # `source: "Boats"` used to be searched for as words, which finds nothing
+    # and does not say why.
+    async with app.run_test() as pilot:
+        app.query_one("#query", Input).value = 'source: "Boats"'
+        await pilot.press("enter")
+        await pilot.pause()
+
+        table = app.query_one("#results", DataTable)
+        assert table.row_count == 1
+        assert "source: Boats" in str(app.query_one("#status", Static).content)
+
+
+async def test_a_date_it_cannot_read_is_said_out_loud(app):
+    async with app.run_test() as pilot:
+        app.query_one("#query", Input).value = "since: last tuesday"
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert "expected 3h" in str(app.query_one("#status", Static).content)

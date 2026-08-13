@@ -28,6 +28,7 @@ from textual.widgets import (
 from .config import Config
 from .report import render
 from .store import Item, Store, open_store
+from .tools import BadSince, parse_query
 
 
 class LibraryUI(App[int]):
@@ -57,7 +58,10 @@ class LibraryUI(App[int]):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
-        yield Input(placeholder="Search titles, sources, summaries, article text…", id="query")
+        yield Input(
+            placeholder='Words, or source:"Colion Noir" title:rust since:7d unread:yes',
+            id="query",
+        )
         with Horizontal():
             yield DataTable(id="results", cursor_type="row")
             yield Static("", id="article", markup=False)
@@ -80,12 +84,22 @@ class LibraryUI(App[int]):
         self.query_one("#results", DataTable).focus()
 
     def _run_search(self, query: str) -> None:
-        self._items = self._store.search(
-            query,
-            unread=True if self._unread_only else None,
-            summarized=True if self._summarized_only else None,
-            limit=200,
-        )
+        try:
+            words, typed = parse_query(query)
+        except BadSince as bad:
+            # A date nobody can read is worth saying so about, rather than
+            # quietly searching for the letters in it.
+            self._say(str(bad))
+            return
+
+        # The keys the toggles set, unless the query said otherwise: what was
+        # typed is more specific than a key pressed earlier.
+        if self._unread_only:
+            typed.setdefault("unread", True)
+        if self._summarized_only:
+            typed.setdefault("summarized", True)
+
+        self._items = self._store.search(words, limit=200, **typed)
         table = self.query_one("#results", DataTable)
         table.clear()
         for item in self._items:
@@ -96,9 +110,10 @@ class LibraryUI(App[int]):
                 item.title[:80],
             )
         filters = [
-            name
-            for name, on_ in (("unread", self._unread_only), ("summarized", self._summarized_only))
-            if on_
+            f"{name}: {value:%Y-%m-%d %H:%M}"
+            if hasattr(value, "year")
+            else (name if value is True else f"{name}: {value}")
+            for name, value in typed.items()
         ]
         suffix = f" · {' · '.join(filters)}" if filters else ""
         self._say(f"{len(self._items)} matching{suffix}")
