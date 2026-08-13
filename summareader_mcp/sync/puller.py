@@ -111,13 +111,31 @@ class Puller:
         except ValueError:
             return 0
 
-    def _fetch_bodies(self, limit: int = 200) -> int:
+    def _fetch_bodies(self, batch: int = 200) -> int:
         """The article text the log only pointed at.
 
         The difference between searching titles and summaries and searching
         what the articles say. A server can afford the bytes where a phone
         cannot, which is why this is on by default here and off there.
+
+        Keeps going until there is nothing left to fetch, rather than taking
+        `batch` of them per pull: a backlog of a few thousand drained 200 at a
+        time is hours of a mirror that answers about articles it has not read
+        yet, and the point of the thing is that it has read them.
         """
+        total = 0
+        while True:
+            arrived = self._fetch_body_batch(batch)
+            total += arrived
+            # No progress means what is left is unfetchable — a blob the
+            # server has reclaimed, say — and those stay selected, so this is
+            # the difference between draining and spinning.
+            if arrived == 0:
+                return total
+            if total > batch:
+                log.info("%d bodies so far", total)
+
+    def _fetch_body_batch(self, limit: int) -> int:
         arrived = 0
         for item_id, name in self._store.items_wanting_bodies(limit):
             try:

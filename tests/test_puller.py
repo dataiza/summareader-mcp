@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -171,6 +172,37 @@ class TestBodies:
         assert report.bodies == 1
         assert "borrow checker" in store.body("a")
         assert [i.id for i in store.search("borrow checker")] == ["a"]
+
+    def test_a_backlog_is_drained_rather_than_taken_a_batch_per_pull(self, parts):
+        # 200 at a time meant a mirror that had not read the articles it was
+        # being asked about until hours after it said it held them.
+        cfg, store, backend = parts
+        for n in range(7):
+            name = backend.put_body(f"body {n}")
+            backend.append(item(id=f"i{n}", title=f"Item {n}"))
+            backend.append(LogRecord(op=LogOp.TEXT, id=f"i{n}", data={"blob": name}))
+
+        # Items in, bodies deliberately left behind, then drained two at a
+        # time — which is the shape of a first run against a real library.
+        Puller(replace(cfg, fetch_bodies=False), store, backend).pull()
+        assert store.body("i0") is None
+
+        assert Puller(cfg, store, backend)._fetch_bodies(batch=2) == 7
+        assert all(store.body(f"i{n}") for n in range(7))
+
+    def test_draining_stops_at_what_cannot_be_fetched(self, parts):
+        # The unfetchable stay selected, so a drain that only checked for a
+        # full batch would ask for them forever.
+        cfg, store, backend = parts
+        name = backend.put_body("here")
+        backend.append(item(id="have", title="Have"))
+        backend.append(LogRecord(op=LogOp.TEXT, id="have", data={"blob": name}))
+        backend.append(item(id="gone", title="Gone"))
+        backend.append(LogRecord(op=LogOp.TEXT, id="gone", data={"blob": "gone"}))
+
+        report = Puller(cfg, store, backend).pull()
+
+        assert report.ok and report.bodies == 1
 
     def test_a_blob_the_server_no_longer_has_is_not_an_error(self, parts):
         # Retention on the device that wrote it can reclaim the bytes while the
