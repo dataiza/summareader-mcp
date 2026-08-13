@@ -131,7 +131,13 @@ it can read everything.**
 
 ```sh
 ./scripts/run.sh                             # stdio, which is what clients expect
+./scripts/run.sh --docker                    # HTTP in a container — needs no Python
+./scripts/run.sh search rust                 # or any other subcommand
 ```
+
+`--docker` serves HTTP on 8100 rather than stdio, because a container is not a
+subprocess its client can start — there is nothing on the other end of its
+standard input. An MCP client configured with `command:` wants the first line.
 
 ### Left running
 
