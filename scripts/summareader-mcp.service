@@ -10,7 +10,7 @@ Wants=network-online.target
 # HTTP, not stdio: a service has no client on the other end of its standard
 # input. A local MCP client that starts its own subprocess wants scripts/run.sh
 # instead, and needs no service at all.
-ExecStart=@BIN@ --transport=http --port=@PORT@
+ExecStart=@BIN@ serve --transport=http --port=@PORT@
 Environment=SUMMAREADER_MCP_CONFIG=@CONFIG@
 Environment=SUMMAREADER_MCP_CACHE=@CACHE@
 Restart=on-failure

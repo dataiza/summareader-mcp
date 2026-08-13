@@ -91,10 +91,14 @@ fi
 
 mkdir -p "$bin_dir" "$unit_dir" "$cache_dir"
 
-# Compiled rather than `dart run`: a service should not need a Dart SDK on the
-# machine, and should not pay for a compile on every restart.
-dart pub get
-dart compile exe bin/summareader_mcp.dart -o "$bin_dir/$name"
+# Its own virtualenv, and the console script from it: a service should not
+# depend on what happens to be installed system-wide, and should not have its
+# dependencies changed by something else on the machine.
+venv_dir="$cache_dir/venv"
+python3 -m venv "$venv_dir"
+"$venv_dir/bin/pip" install --quiet --upgrade pip
+"$venv_dir/bin/pip" install --quiet .
+ln -sf "$venv_dir/bin/$name" "$bin_dir/$name"
 
 sed -e "s|@BIN@|$bin_dir/$name|g" \
     -e "s|@CONFIG@|$config|g" \

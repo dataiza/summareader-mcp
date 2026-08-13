@@ -238,3 +238,7 @@ def _since(value: str | None) -> datetime | None:
     except ValueError:
         raise ConfigError(f"--since {value}: expected 7d, 3w, or a date like 2026-08-01")
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+if __name__ == "__main__":  # `python -m summareader_mcp.cli`, for a checkout
+    raise SystemExit(main())

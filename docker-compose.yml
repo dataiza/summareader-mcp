@@ -1,17 +1,17 @@
 # An MCP server over your SummaReader library.
 #
-#   cp summareader-mcp.example.json ../summareader-mcp.local.json   # then fill it in
+#   cp summareader-mcp.example.json summareader-mcp.local.json   # then fill it in
 #   docker compose up -d
 #
-# Run it from this directory. The build context is the parent, because this
-# package shares the protocol with the app by path dependency.
+# Run it from this directory. The build context is this directory too: this
+# server carries its own implementation of the sync protocol, checked against
+# the app's test vectors, so it needs nothing outside its own repository.
 
 services:
   mcp:
     build:
-      # One level up, so the build can see ../summareader/packages/summareader_core.
-      context: ..
-      dockerfile: summareader-mcp/Dockerfile
+      context: .
+      dockerfile: Dockerfile
     image: summareader-mcp:local
     restart: unless-stopped
 

@@ -14,4 +14,8 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export SUMMAREADER_MCP_CONFIG="${SUMMAREADER_MCP_CONFIG:-$PWD/summareader-mcp.local.json}"
 export SUMMAREADER_MCP_CACHE="${SUMMAREADER_MCP_CACHE:-$PWD/.cache}"
 
-exec dart run bin/summareader_mcp.dart "$@"
+# The virtualenv if there is one, so a checkout runs without being installed.
+if [ -x .venv/bin/summareader-mcp ]; then
+  exec .venv/bin/summareader-mcp "$@"
+fi
+exec python3 -m summareader_mcp.cli "$@"
