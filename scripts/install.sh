@@ -36,8 +36,7 @@ if [ "${1:-}" = "--docker" ]; then
   command -v docker >/dev/null || { echo "Docker is not installed." >&2; exit 1; }
   if [ "${2:-}" = "--uninstall" ]; then
     docker compose down
-    echo "stopped. The mirror volume is kept; it is a cache and safe to drop:"
-    echo "  docker volume rm ${PWD##*/}_mcp-cache"
+    echo "stopped. ./.cache is kept; it is a cache and safe to delete."
     exit 0
   fi
   [ -f "$config" ] || { echo "No config at $config." >&2; exit 1; }

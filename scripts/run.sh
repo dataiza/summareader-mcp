@@ -33,6 +33,10 @@ if [ "${1:-}" = "--docker" ]; then
   echo "Serving HTTP on 127.0.0.1:8100 — not stdio. Ctrl-C to stop." >&2
 
   # No -d: the point of this script is a process you can watch and stop.
+  # Same ./.cache the host commands read, so `status` and `search` here
+  # describe what the container actually holds.
+  MCP_UID="$(id -u)" MCP_GID="$(id -g)"
+  export MCP_UID MCP_GID
   exec docker compose up --build --abort-on-container-exit "$@"
 fi
 

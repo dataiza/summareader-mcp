@@ -11,3 +11,8 @@ allreader-mcp.local.json
 __pycache__/
 *.egg-info/
 .pytest_cache/
+
+# The decrypted library. Rebuilt from the log in about a minute, and the
+# single most complete plaintext copy of it that exists — not something to
+# hand to a git remote.
+.cache/

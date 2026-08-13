@@ -15,6 +15,10 @@ services:
     image: summareader-mcp:local
     restart: unless-stopped
 
+    # As whoever owns ./.cache, so the host's CLI and TUI share one library
+    # with the container. Override when that is not this user.
+    user: "${MCP_UID:-1000}:${MCP_GID:-1000}"
+
     ports:
       # Localhost only, and not negotiable without thinking hard first. This
       # port is unauthenticated and this process holds the master key, so
@@ -28,9 +32,11 @@ services:
       # `docker inspect` prints an environment, and a mounted file can be
       # given permissions.
       - ./summareader-mcp.local.json:/config/summareader-mcp.json:ro
-      # The decrypted cache. Deleting this volume costs nothing but a re-read
-      # of the log.
-      - mcp-cache:/cache
+      # The decrypted cache. Deleting it costs nothing but a re-read of the
+      # log — but it is a directory rather than a named volume, because the
+      # CLI and the TUI run on the host and a volume means they read an empty
+      # second library while the container quietly holds the real one.
+      - ./.cache:/cache
 
     healthcheck:
       # /health needs no token: it says whether the process is up and nothing
@@ -65,10 +71,8 @@ services:
       - default
       # Uncomment together with the block at the bottom of this file to reach
       # a sync server running in its own compose project on this host.
-      # - sync
+      #- sync
 
-volumes:
-  mcp-cache:
 
 # networks:
 #   sync:
