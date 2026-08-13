@@ -1,0 +1,182 @@
+"""The library in a terminal, for searching it and writing the answer down.
+
+Deliberately not the app's reading UI. `summareader_tui` in the main repo is
+that — three panes and the same keys, for reading over SSH. This is the other
+half of what a mirror is for: type a question, see what matches, export it.
+
+So: a query at the top, results under it, the article beside them, and one key
+that writes the current result set to a file.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from pathlib import Path
+
+from textual import on
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import Horizontal, Vertical
+from textual.widgets import (
+    DataTable,
+    Footer,
+    Header,
+    Input,
+    Static,
+)
+
+from .config import Config
+from .report import render
+from .store import Item, Store, open_store
+
+
+class LibraryUI(App[int]):
+    CSS = """
+    Screen { layout: vertical; }
+    #query { dock: top; }
+    #results { width: 55%; }
+    #article { width: 45%; padding: 0 1; border-left: solid $panel; }
+    #status { dock: bottom; height: 1; color: $text-muted; }
+    """
+
+    BINDINGS = [
+        Binding("escape", "focus_query", "Search"),
+        Binding("e", "export", "Export"),
+        Binding("u", "toggle_unread", "Unread only"),
+        Binding("s", "toggle_summarized", "Summarized only"),
+        Binding("q", "quit", "Quit"),
+    ]
+
+    def __init__(self, store: Store, config: Config) -> None:
+        super().__init__()
+        self._store = store
+        self._config = config
+        self._items: list[Item] = []
+        self._unread_only = False
+        self._summarized_only = False
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=False)
+        yield Input(placeholder="Search titles, sources, summaries, article text…", id="query")
+        with Horizontal():
+            yield DataTable(id="results", cursor_type="row")
+            yield Static("", id="article", markup=False)
+        yield Static("", id="status")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        table = self.query_one("#results", DataTable)
+        table.add_columns("", "Date", "Source", "Title")
+        self.title = "SummaReader"
+        self.sub_title = str(self._config.database)
+        self._run_search("")
+        self.query_one("#query", Input).focus()
+
+    # ---- searching -----------------------------------------------------
+
+    @on(Input.Submitted, "#query")
+    def _submitted(self, event: Input.Submitted) -> None:
+        self._run_search(event.value)
+        self.query_one("#results", DataTable).focus()
+
+    def _run_search(self, query: str) -> None:
+        self._items = self._store.search(
+            query,
+            unread=True if self._unread_only else None,
+            summarized=True if self._summarized_only else None,
+            limit=200,
+        )
+        table = self.query_one("#results", DataTable)
+        table.clear()
+        for item in self._items:
+            table.add_row(
+                " " if item.read else "•",
+                item.when,
+                item.source[:22],
+                item.title[:80],
+            )
+        filters = [
+            name
+            for name, on_ in (("unread", self._unread_only), ("summarized", self._summarized_only))
+            if on_
+        ]
+        suffix = f" · {' · '.join(filters)}" if filters else ""
+        self._say(f"{len(self._items)} matching{suffix}")
+        self._show(0 if self._items else None)
+
+    @on(DataTable.RowHighlighted, "#results")
+    def _highlighted(self, event: DataTable.RowHighlighted) -> None:
+        self._show(event.cursor_row)
+
+    def _show(self, index: int | None) -> None:
+        pane = self.query_one("#article", Static)
+        if index is None or not (0 <= index < len(self._items)):
+            pane.update("")
+            return
+        item = self._items[index]
+        lines = [item.title, ""]
+        meta = " · ".join(p for p in (item.source, item.when) if p)
+        if meta:
+            lines += [meta, ""]
+        lines.append(item.url)
+        lines.append("")
+        if item.summary:
+            if item.summary.tldr:
+                lines += [item.summary.tldr, ""]
+            for point in item.summary.points:
+                lines.append(f"  · {point.text}")
+            if item.summary.long:
+                lines += ["", item.summary.long]
+        else:
+            lines.append("Not summarized.")
+        body = self._store.body(item.id)
+        if body:
+            lines += ["", "─" * 40, "", body[:4000]]
+        pane.update("\n".join(lines))
+
+    # ---- the keys ------------------------------------------------------
+
+    def action_focus_query(self) -> None:
+        self.query_one("#query", Input).focus()
+
+    def action_toggle_unread(self) -> None:
+        self._unread_only = not self._unread_only
+        self._run_search(self.query_one("#query", Input).value)
+
+    def action_toggle_summarized(self) -> None:
+        self._summarized_only = not self._summarized_only
+        self._run_search(self.query_one("#query", Input).value)
+
+    def action_export(self) -> None:
+        """Whatever is on screen, as Markdown, next to where you started it.
+
+        No dialog: the report is the current result set, and asking three
+        questions about where to put it is three more than the moment wants.
+        """
+        if not self._items:
+            self._say("nothing to export")
+            return
+        query = self.query_one("#query", Input).value.strip()
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        name = f"summareader-{stamp}.md"
+        path = Path.cwd() / name
+        path.write_text(
+            render(
+                self._items,
+                "md",
+                title=f"Library report — {query}" if query else "Library report",
+            )
+        )
+        self._say(f"{len(self._items)} articles → {path}")
+
+    def _say(self, message: str) -> None:
+        self.query_one("#status", Static).update(message)
+
+
+def run_ui(config: Config) -> int:
+    store = open_store(config.database, read_only=config.reads_a_local_library)
+    try:
+        LibraryUI(store, config).run()
+    finally:
+        store.close()
+    return 0

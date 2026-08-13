@@ -11,6 +11,7 @@ Read-only in both cases. The mirror pulls and serves; nothing it holds changes.
 from __future__ import annotations
 
 import sqlite3
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -45,11 +46,19 @@ def open_store(path: Path | str, *, read_only: bool = False) -> Store:
     and a mirror has no business writing to a library it does not own.
     """
     path = Path(path)
+    # `check_same_thread=False` plus the lock in `_Locked`, because this store
+    # is read from more than one thread: the MCP server answers each tool call
+    # on a worker, and the sync loop writes from its own. sqlite3 refuses a
+    # connection used off its creating thread, and the alternative — a
+    # connection per thread — means every writer racing every reader for the
+    # same file rather than queueing politely in one process.
     if read_only:
-        connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        connection = sqlite3.connect(
+            f"file:{path}?mode=ro", uri=True, check_same_thread=False
+        )
     else:
         path.parent.mkdir(parents=True, exist_ok=True)
-        connection = sqlite3.connect(path)
+        connection = sqlite3.connect(path, check_same_thread=False)
     connection.row_factory = sqlite3.Row
     # Both a reader and a writer can be open at once — `serve` and `ui`, or
     # this and the app. WAL and a timeout are what make that uneventful rather
@@ -59,11 +68,41 @@ def open_store(path: Path | str, *, read_only: bool = False) -> Store:
         connection.execute("PRAGMA journal_mode = WAL")
         connection.executescript(_SCHEMA.read_text())
         connection.commit()
-    return Store(connection, read_only=read_only)
+    return Store(_Locked(connection), read_only=read_only)
+
+
+class _Locked:
+    """One connection, one lock, and every statement materialised.
+
+    Rows are fetched inside the lock rather than handed back as a live cursor:
+    a cursor iterated after the lock is released is the same bug in a costume.
+    Every query here is bounded by a LIMIT or is a write, so nothing is being
+    loaded that would not have been anyway.
+    """
+
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._db = connection
+        self._lock = threading.RLock()
+
+    def execute(self, sql: str, args: Any = ()) -> list[sqlite3.Row]:
+        with self._lock:
+            return self._db.execute(sql, args).fetchall()
+
+    def executescript(self, sql: str) -> None:
+        with self._lock:
+            self._db.executescript(sql)
+
+    def commit(self) -> None:
+        with self._lock:
+            self._db.commit()
+
+    def close(self) -> None:
+        with self._lock:
+            self._db.close()
 
 
 class Store:
-    def __init__(self, connection: sqlite3.Connection, *, read_only: bool) -> None:
+    def __init__(self, connection: _Locked, *, read_only: bool) -> None:
         self._db = connection
         self.read_only = read_only
 
@@ -155,10 +194,10 @@ class Store:
         return [self._item(row) for row in self._db.execute(sql, [item_id])]
 
     def body(self, item_id: str) -> str | None:
-        row = self._db.execute(
+        rows = self._db.execute(
             "SELECT text FROM extracted_texts WHERE item_id = ?", [item_id]
-        ).fetchone()
-        return row["text"] if row else None
+        )
+        return rows[0]["text"] if rows else None
 
     def sources(self) -> list[tuple[str, int]]:
         rows = self._db.execute(
@@ -173,7 +212,7 @@ class Store:
         return [(row["name"], row["n"]) for row in rows]
 
     def counts(self) -> dict[str, int]:
-        row = self._db.execute(
+        rows = self._db.execute(
             """
             SELECT (SELECT COUNT(*) FROM items) AS items,
                    (SELECT COUNT(*) FROM items WHERE read = 0) AS unread,
@@ -182,19 +221,19 @@ class Store:
                    (SELECT COUNT(*) FROM extracted_texts) AS bodies,
                    (SELECT COUNT(*) FROM channels WHERE kind <> 'saved') AS sources
             """
-        ).fetchone()
-        return dict(row)
+        )
+        return dict(rows[0])
 
     def setting(self, key: str) -> str | None:
         try:
-            row = self._db.execute(
+            rows = self._db.execute(
                 "SELECT value FROM settings WHERE key = ?", [key]
-            ).fetchone()
+            )
         except sqlite3.OperationalError:
             # `--library` mode against an app database, whose settings table
             # holds the app's own keys and not ours.
             return None
-        return row["value"] if row else None
+        return rows[0]["value"] if rows else None
 
     def set_setting(self, key: str, value: str) -> None:
         self._db.execute(
