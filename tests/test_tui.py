@@ -74,9 +74,12 @@ async def test_the_article_pane_shows_what_is_selected(app):
         app.query_one("#query", Input).value = "boat"
         await pilot.press("enter")
         await pilot.pause()
-        shown = str(app.query_one("#article", Static).content)
-        assert "Buying an old boat" in shown
-        assert "Surveys matter more than the hull." in shown
+        # Title and feed in the header, which stays put; the rest scrolls.
+        head = str(app.query_one("#article-head", Static).content)
+        assert "Buying an old boat" in head and "Boats" in head
+        assert "Surveys matter more than the hull." in str(
+            app.query_one("#article", Static).content
+        )
 
 
 async def test_an_article_with_no_summary_says_so(app):

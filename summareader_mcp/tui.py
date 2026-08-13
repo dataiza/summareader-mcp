@@ -16,7 +16,7 @@ from pathlib import Path
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import (
     DataTable,
     Footer,
@@ -36,7 +36,12 @@ class LibraryUI(App[int]):
     Screen { layout: vertical; }
     #query { dock: top; }
     #results { width: 55%; }
-    #article { width: 45%; padding: 0 1; border-left: solid $panel; }
+    #detail { width: 45%; border-left: solid $panel; }
+    /* Docked, so the article scrolls under it rather than taking it away:
+       four lines into a body, "what am I reading, and who wrote it" is
+       exactly the question the pane stops answering. */
+    #article-head { dock: top; height: auto; padding: 0 1; background: $panel; }
+    #article { padding: 0 1; }
     #status { dock: bottom; height: 1; color: $text-muted; }
     """
 
@@ -64,7 +69,10 @@ class LibraryUI(App[int]):
         )
         with Horizontal():
             yield DataTable(id="results", cursor_type="row")
-            yield Static("", id="article", markup=False)
+            with Vertical(id="detail"):
+                yield Static("", id="article-head", markup=False)
+                with VerticalScroll():
+                    yield Static("", id="article", markup=False)
         yield Static("", id="status")
         yield Footer()
 
@@ -125,16 +133,19 @@ class LibraryUI(App[int]):
 
     def _show(self, index: int | None) -> None:
         pane = self.query_one("#article", Static)
+        head = self.query_one("#article-head", Static)
         if index is None or not (0 <= index < len(self._items)):
+            head.update("")
             pane.update("")
             return
         item = self._items[index]
-        lines = [item.title, ""]
-        meta = " · ".join(p for p in (item.source, item.when) if p)
-        if meta:
-            lines += [meta, ""]
-        lines.append(item.url)
-        lines.append("")
+        head.update(
+            "\n".join(
+                [item.title]
+                + [m for m in [" · ".join(p for p in (item.source, item.when) if p)] if m]
+            )
+        )
+        lines = [item.url, ""]
         if item.summary:
             if item.summary.tldr:
                 lines += [item.summary.tldr, ""]
