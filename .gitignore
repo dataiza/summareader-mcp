@@ -5,3 +5,9 @@ build/
 summareader-mcp.local.json
 # The name this file had before the rename, so an old one stays ignored.
 allreader-mcp.local.json
+
+# Python
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
