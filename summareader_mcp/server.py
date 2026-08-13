@@ -62,9 +62,17 @@ def serve(config: Config, *, transport: str = "stdio", port: int = 8100) -> int:
         _start_syncing(config, store, metrics)
 
     if transport == "http":
-        server.settings.port = port
-        server.settings.host = "0.0.0.0"
-        server.run(transport="streamable-http")
+        # Passed to run, not set on settings: `Settings` carries the server's
+        # own options — logging, lifespan, duplicate warnings — and never had a
+        # host or a port. Assigning one raises, which is what a container did
+        # on every restart while stdio went on working, because stdio is the
+        # transport with nowhere to put a port.
+        #
+        # 0.0.0.0 because a container's port is published by the runtime, and
+        # a process bound to loopback inside one is reachable by nothing. The
+        # boundary is the published port and the token, not this address —
+        # see the warning above.
+        server.run(transport="streamable-http", host="0.0.0.0", port=port)
     else:
         server.run(transport="stdio")
     return 0

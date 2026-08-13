@@ -25,7 +25,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.run(args)
-    except ConfigError as error:
+    except (ConfigError, FileNotFoundError) as error:
         print(f"summareader-mcp: {error}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:

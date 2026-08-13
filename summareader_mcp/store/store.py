@@ -46,6 +46,11 @@ def open_store(path: Path | str, *, read_only: bool = False) -> Store:
     and a mirror has no business writing to a library it does not own.
     """
     path = Path(path)
+    if read_only and not path.exists():
+        # sqlite's own answer here is "unable to open database file", raised as
+        # a traceback out of a `--library` typo. The path is the whole of what
+        # went wrong, so the message is the path.
+        raise FileNotFoundError(f"no library at {path}")
     # `check_same_thread=False` plus the lock in `_Locked`, because this store
     # is read from more than one thread: the MCP server answers each tool call
     # on a worker, and the sync loop writes from its own. sqlite3 refuses a

@@ -125,3 +125,12 @@ class TestSince:
 
     def test_nothing_means_no_filter(self):
         assert _since(None) is None
+
+
+class TestAPathThatIsNotThere:
+    def test_says_so_in_a_sentence(self, tmp_path, capsys):
+        # sqlite's own answer is "unable to open database file", raised as a
+        # traceback out of a typo. The path is the whole of what went wrong.
+        code = main(["--library", str(tmp_path / "nope.sqlite"), "status"])
+        assert code == 2
+        assert "no library at" in capsys.readouterr().err
