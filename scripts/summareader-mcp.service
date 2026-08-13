@@ -2,7 +2,7 @@
 # Installed by scripts/install.sh, which fills in the @…@ placeholders. Edit
 # this file rather than the installed copy: installing again overwrites it.
 Description=SummaReader MCP server
-Documentation=https://github.com/p4ulie/summareader-mcp
+Documentation=https://github.com/dataiza/summareader-mcp
 After=network-online.target
 Wants=network-online.target
 

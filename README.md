@@ -106,7 +106,7 @@ summarizes while nobody is looking — it does not need sync, keys, or a second
 plaintext copy of anything:
 
 ```sh
-summareader-mcp --library ~/.local/share/net.p4ulie.summareader/summareader.sqlite ui
+summareader-mcp --library ~/.local/share/sk.dataiza.summareader/summareader.sqlite ui
 ```
 
 The file is opened **read-only**; the app can be running against it at the same
