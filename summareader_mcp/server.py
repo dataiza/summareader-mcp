@@ -10,13 +10,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 from mcp.server.mcpserver import MCPServer
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 
 from . import __version__, tools
+from .tools import parse_since
 from .config import Config
 from .metrics import Metrics
 from .store import open_store
@@ -82,14 +83,21 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
     @server.tool(
         name="search_library",
         description=(
-            "Search the reading library by words in the title, source, summary "
-            "or article text. Newest first."
+            "Search the reading library. `query` matches words in the title, "
+            "source, summary or article text; `title` and `source` match one "
+            "of those alone, partially. `since`/`until` bound when an article "
+            "was published and `read_since`/`read_until` when it was read — "
+            "each takes 3h, 7d, 3w, or a date like 2026-08-01. Newest first."
         ),
     )
     def search_library(
         query: str = "",
+        title: str | None = None,
         source: str | None = None,
-        since_days: int | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        read_since: str | None = None,
+        read_until: str | None = None,
         unread: bool | None = None,
         summarized: bool | None = None,
         limit: int = 20,
@@ -97,8 +105,12 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
         return tools.search_library(
             store,
             query,
+            title=title,
             source=source,
-            since=_since(since_days),
+            since=parse_since(since),
+            until=parse_since(until),
+            read_since=parse_since(read_since),
+            read_until=parse_since(read_until),
             unread=unread,
             summarized=summarized,
             limit=limit,
@@ -134,18 +146,28 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
     @server.tool(
         name="library_report",
         description=(
-            "A written report over a set of articles, as Markdown, CSV or JSON."
+            "A written report over a set of articles, as Markdown, CSV or JSON. "
+            "`since` narrows by age: 3h, 7d, 3w, or a date like 2026-08-01."
         ),
     )
     def library_report(
         query: str = "",
+        title: str | None = None,
         source: str | None = None,
-        since_days: int | None = None,
+        since: str | None = None,
+        until: str | None = None,
         fmt: str = "md",
         limit: int = 50,
     ) -> str:
         return tools.library_report(
-            store, query, source=source, since=_since(since_days), fmt=fmt, limit=limit
+            store,
+            query,
+            title=title,
+            source=source,
+            since=parse_since(since),
+            until=parse_since(until),
+            fmt=fmt,
+            limit=limit,
         )
 
     @server.custom_route("/health", methods=["GET"])
@@ -209,5 +231,4 @@ def _sleep(seconds: float) -> None:
     time.sleep(seconds)
 
 
-def _since(days: int | None) -> datetime | None:
-    return None if not days else datetime.now(timezone.utc) - timedelta(days=days)
+# `_since` lived here too, taking whole days. One parser now, in tools.

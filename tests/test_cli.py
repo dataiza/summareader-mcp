@@ -116,6 +116,12 @@ class TestSince:
         week = _since("7d")
         assert abs((datetime.now(timezone.utc) - week) - timedelta(days=7)).seconds < 5
 
+    def test_hours(self):
+        # "what arrived this morning" was not expressible when a day was the
+        # finest this could say.
+        recent = _since("3h")
+        assert abs((datetime.now(timezone.utc) - recent) - timedelta(hours=3)).seconds < 5
+
     def test_a_date(self):
         assert _since("2026-08-01").year == 2026
 

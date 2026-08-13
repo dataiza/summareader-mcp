@@ -78,6 +78,19 @@ Point the tests at a checkout elsewhere with `SUMMAREADER_VECTORS=/path/to/proto
 | `read_item` | One article in full, including its text |
 | `library_report` | A written report over a set of articles, as Markdown, CSV or JSON |
 
+`search_library` narrows by `query` (title, source, summary and article text at
+once), `title` or `source` alone as a substring, `unread`, `summarized`, and
+four times: `since`/`until` for when an article was published, `read_since`/
+`read_until` for when it was read. Each of those takes `3h`, `7d`, `3w` or a
+date like `2026-08-01`. The command line takes the same set as flags.
+
+Read times are what this mirror saw, not what the log said: a read record
+carries `read`, `saved` and `position`, and no timestamp, so the arrival of one
+is the closest thing to a read time that exists. A backfill is therefore left
+unstamped rather than claiming a decade of reading happened the afternoon the
+mirror was set up, which means `read_since` answers for what has been read
+since this started running and nothing before it.
+
 Read-only, deliberately. A tool that wrote to the log would be a second writer
 of a format the app owns, and getting that wrong corrupts a library rather than
 returning a bad answer.

@@ -63,6 +63,12 @@ class Puller:
         cursor = self._agreed_cursor()
         entries = applied = 0
 
+        # A pull that starts at zero is the whole history arriving at once, and
+        # "read" records in it were read whenever they were read — not now. So
+        # no read times are invented for a backfill; they begin with the first
+        # record that arrives while this mirror is actually running.
+        self._store.stamp_reads = cursor > 0
+
         while True:
             page = self._backend.read_from(cursor, limit=500)
             if not page:
@@ -86,6 +92,7 @@ class Puller:
             if len(page) < 500:
                 break
 
+        self._store.stamp_reads = True
         bodies = self._fetch_bodies() if self._config.fetch_bodies else 0
         return PullReport(entries, applied, bodies, cursor)
 

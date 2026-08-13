@@ -33,6 +33,7 @@ class Item:
     read: bool
     summary: Summary | None
     words: int | None = None
+    read_at: datetime | None = None
 
     @property
     def when(self) -> str:
@@ -72,6 +73,13 @@ def open_store(path: Path | str, *, read_only: bool = False) -> Store:
     if not read_only:
         connection.execute("PRAGMA journal_mode = WAL")
         connection.executescript(_SCHEMA.read_text())
+        # `CREATE TABLE IF NOT EXISTS` does nothing to a table that is already
+        # there, so a column added later needs saying twice. The cache is
+        # disposable and could simply be rebuilt, but a rebuild is every blob
+        # downloaded again for the sake of one nullable integer.
+        held = {row["name"] for row in connection.execute("PRAGMA table_info(items)")}
+        if "read_at" not in held:
+            connection.execute("ALTER TABLE items ADD COLUMN read_at INTEGER")
         connection.commit()
     return Store(_Locked(connection), read_only=read_only)
 
@@ -110,6 +118,12 @@ class Store:
     def __init__(self, connection: _Locked, *, read_only: bool) -> None:
         self._db = connection
         self.read_only = read_only
+        # The log says an item is read; it never says when. So the arrival of
+        # that record is the best this can know, which is right for a mirror
+        # that was running at the time and wrong for one replaying years of
+        # history in a minute — hence the puller turning it off for a backfill
+        # rather than stamping ten thousand things as read this afternoon.
+        self.stamp_reads = True
 
     def close(self) -> None:
         self._db.close()
@@ -126,8 +140,12 @@ class Store:
         self,
         query: str = "",
         *,
+        title: str | None = None,
         source: str | None = None,
         since: datetime | None = None,
+        until: datetime | None = None,
+        read_since: datetime | None = None,
+        read_until: datetime | None = None,
         unread: bool | None = None,
         summarized: bool | None = None,
         limit: int = 20,
@@ -152,12 +170,24 @@ class Store:
                 " OR lower(i.canonical_url) LIKE ?)"
             )
             args += [needle] * 5
+        if title:
+            where.append("lower(coalesce(i.title,'')) LIKE ?")
+            args.append(f"%{title.lower()}%")
         if source:
             where.append("lower(coalesce(src.name,'')) LIKE ?")
             args.append(f"%{source.lower()}%")
         if since is not None:
             where.append("coalesce(i.published_at, i.fetched_at) >= ?")
             args.append(int(since.timestamp()))
+        if until is not None:
+            where.append("coalesce(i.published_at, i.fetched_at) <= ?")
+            args.append(int(until.timestamp()))
+        if read_since is not None:
+            where.append("i.read_at >= ?")
+            args.append(int(read_since.timestamp()))
+        if read_until is not None:
+            where.append("i.read_at <= ?")
+            args.append(int(read_until.timestamp()))
         if unread is not None:
             where.append("i.read = ?")
             args.append(0 if unread else 1)
@@ -166,7 +196,7 @@ class Store:
 
         sql = f"""
             SELECT i.id, i.title, i.canonical_url, i.published_at, i.fetched_at,
-                   i.read, src.name AS source, s.text AS summary,
+                   i.read, i.read_at, src.name AS source, s.text AS summary,
                    t.word_count AS words
             FROM items i
             {_SOURCE_JOIN}
@@ -188,7 +218,7 @@ class Store:
     def search_by_id(self, item_id: str) -> list[Item]:
         sql = f"""
             SELECT i.id, i.title, i.canonical_url, i.published_at, i.fetched_at,
-                   i.read, src.name AS source, s.text AS summary,
+                   i.read, i.read_at, src.name AS source, s.text AS summary,
                    t.word_count AS words
             FROM items i
             {_SOURCE_JOIN}
@@ -376,10 +406,20 @@ class Store:
         # `read` is not `false`.
         if "read" not in record.data:
             return False
-        self._db.execute(
-            "UPDATE items SET read = ? WHERE id = ?",
-            [1 if record.data["read"] else 0, record.id],
-        )
+        read = bool(record.data["read"])
+        if not read:
+            # Unread again means the reading did not happen, so neither did
+            # the time it happened at.
+            self._db.execute(
+                "UPDATE items SET read = 0, read_at = NULL WHERE id = ?", [record.id]
+            )
+        elif self.stamp_reads:
+            self._db.execute(
+                "UPDATE items SET read = 1, read_at = ? WHERE id = ?",
+                [int(datetime.now(timezone.utc).timestamp()), record.id],
+            )
+        else:
+            self._db.execute("UPDATE items SET read = 1 WHERE id = ?", [record.id])
         return True
 
     def _apply_blob_pointer(self, column: str):
@@ -431,6 +471,11 @@ class Store:
                 datetime.fromtimestamp(published, tz=timezone.utc) if published else None
             ),
             read=bool(row["read"]),
+            read_at=(
+                datetime.fromtimestamp(row["read_at"], tz=timezone.utc)
+                if "read_at" in row.keys() and row["read_at"]
+                else None
+            ),
             summary=summary,
             words=row["words"],
         )

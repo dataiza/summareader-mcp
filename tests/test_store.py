@@ -7,6 +7,7 @@ the app actually writes.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -186,6 +187,43 @@ class TestSearching:
     def test_filtering_by_whether_it_is_summarized(self, filled):
         assert [i.id for i in filled.search(summarized=True)] == ["boat"]
         assert [i.id for i in filled.search(summarized=False)] == ["rust"]
+
+    def test_filtering_by_title_alone(self, filled):
+        # `query` would have matched the source and the body too; this is the
+        # question "what did I read *called* something like this".
+        assert [i.id for i in filled.search(title="old boat")] == ["boat"]
+        assert filled.search(title="Boat Channel") == []
+
+    def test_filtering_by_when_it_was_published(self, filled):
+        published = datetime(2026, 8, 1, 10, tzinfo=timezone.utc)
+        assert len(filled.search(since=published - timedelta(hours=1))) == 2
+        assert len(filled.search(until=published - timedelta(hours=1))) == 0
+        assert len(filled.search(since=published - timedelta(hours=1),
+                                 until=published + timedelta(hours=1))) == 2
+
+    def test_filtering_by_when_it_was_read(self, filled):
+        filled.apply(LogRecord(op=LogOp.READ, id="boat", data={"read": True}))
+
+        just_before = datetime.now(timezone.utc) - timedelta(minutes=1)
+        assert [i.id for i in filled.search(read_since=just_before)] == ["boat"]
+        assert filled.search(read_until=just_before) == []
+        assert filled.search(read_since=just_before)[0].read_at is not None
+
+    def test_unread_again_forgets_when_it_was_read(self, filled):
+        filled.apply(LogRecord(op=LogOp.READ, id="boat", data={"read": True}))
+        filled.apply(LogRecord(op=LogOp.READ, id="boat", data={"read": False}))
+
+        just_before = datetime.now(timezone.utc) - timedelta(minutes=1)
+        assert filled.search(read_since=just_before) == []
+
+    def test_a_backfill_does_not_claim_everything_was_read_just_now(self, filled):
+        # Replaying years of history in a minute would otherwise stamp every
+        # read item with the minute the mirror was set up.
+        filled.stamp_reads = False
+        filled.apply(LogRecord(op=LogOp.READ, id="boat", data={"read": True}))
+
+        read = filled.search(unread=False)
+        assert [i.id for i in read] == ["boat"] and read[0].read_at is None
 
     def test_counts(self, filled):
         counts = filled.counts()

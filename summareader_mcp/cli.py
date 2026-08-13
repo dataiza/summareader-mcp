@@ -9,15 +9,15 @@ can run in a terminal is a search you can check.
 from __future__ import annotations
 
 import argparse
-import re
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
 
 from . import __version__
 from .config import Config, ConfigError
 from .report import render
 from .store import Store, open_store
+from .tools import BadSince, parse_since
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -74,7 +74,7 @@ def _parser() -> argparse.ArgumentParser:
     _filters(report)
     report.add_argument("--format", choices=("md", "csv", "json"), default="md")
     report.add_argument("--out", metavar="FILE", help="write here instead of stdout")
-    report.add_argument("--title", default="Library report")
+    report.add_argument("--heading", default="Library report")
     report.set_defaults(run=_report)
 
     status = sub.add_parser("status", help="what this mirror holds and where it is")
@@ -87,8 +87,12 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _filters(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--title", help="only titles containing this (substring)")
     parser.add_argument("--source", help="only this feed (substring)")
-    parser.add_argument("--since", help="only newer than this: 7d, 3w, 2026-08-01")
+    parser.add_argument("--since", help="published after: 3h, 7d, 3w, 2026-08-01")
+    parser.add_argument("--until", help="published before: 3h, 7d, 3w, 2026-08-01")
+    parser.add_argument("--read-since", help="read after: 3h, 7d, 2026-08-01")
+    parser.add_argument("--read-until", help="read before: 3h, 7d, 2026-08-01")
     parser.add_argument("--unread", action="store_true", help="only unread")
     parser.add_argument("--summarized", action="store_true", help="only summarized")
     parser.add_argument(
@@ -123,7 +127,7 @@ def _recent(args) -> int:
 def _report(args) -> int:
     with _store(args) as store:
         items = _query(store, args)
-    text = render(items, args.format, title=args.title)
+    text = render(items, args.format, title=args.heading)
     if args.out:
         Path(args.out).write_text(text)
         print(f"{len(items)} articles → {args.out}", file=sys.stderr)
@@ -197,8 +201,12 @@ def _query(store: Store, args) -> list:
     summarized = True if args.summarized else (False if args.not_summarized else None)
     return store.search(
         " ".join(args.query),
+        title=args.title,
         source=args.source,
         since=_since(args.since),
+        until=_since(args.until),
+        read_since=_since(args.read_since),
+        read_until=_since(args.read_until),
         unread=True if args.unread else None,
         summarized=summarized,
         limit=args.limit,
@@ -221,23 +229,13 @@ def _print_lines(items: list) -> None:
             print(f"    {item.summary.tldr}")
 
 
-_RELATIVE = re.compile(r"^(\d+)([dwmy])$")
 
 
 def _since(value: str | None) -> datetime | None:
-    """`7d`, `3w`, or a date. Anything else is an error rather than a guess."""
-    if not value:
-        return None
-    match = _RELATIVE.match(value.strip().lower())
-    if match:
-        count, unit = int(match.group(1)), match.group(2)
-        days = {"d": 1, "w": 7, "m": 30, "y": 365}[unit] * count
-        return datetime.now(timezone.utc) - timedelta(days=days)
     try:
-        parsed = datetime.fromisoformat(value)
-    except ValueError:
-        raise ConfigError(f"--since {value}: expected 7d, 3w, or a date like 2026-08-01")
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        return parse_since(value)
+    except BadSince as bad:
+        raise ConfigError(f"--since {bad}")
 
 
 if __name__ == "__main__":  # `python -m summareader_mcp.cli`, for a checkout

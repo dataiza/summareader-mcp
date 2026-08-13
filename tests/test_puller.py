@@ -143,6 +143,30 @@ class TestPulling:
         assert not report.ok and "said no" in report.failure
 
 
+class TestReadTimes:
+    def test_a_first_pull_invents_no_read_times(self, parts):
+        # Everything the log has ever said arrives in one pull. Those items
+        # were read whenever they were read, which this cannot know.
+        cfg, store, backend = parts
+        backend.append(item())
+        backend.append(LogRecord(op=LogOp.READ, id="a", data={"read": True}))
+
+        Puller(cfg, store, backend).pull()
+
+        assert store.item("a").read is True
+        assert store.item("a").read_at is None
+
+    def test_a_pull_that_is_keeping_up_stamps_them(self, parts):
+        cfg, store, backend = parts
+        backend.append(item())
+        Puller(cfg, store, backend).pull()  # now caught up
+
+        backend.append(LogRecord(op=LogOp.READ, id="a", data={"read": True}))
+        Puller(cfg, store, backend).pull()
+
+        assert store.item("a").read_at is not None
+
+
 class TestADifferentServer:
     def test_starts_again_rather_than_resuming_a_meaningless_cursor(self, parts):
         # seq is transport-local: entry 40 elsewhere is not this entry 40, and

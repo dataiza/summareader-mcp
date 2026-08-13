@@ -30,6 +30,9 @@ CREATE TABLE IF NOT EXISTS items (
   fetched_at     INTEGER,
   duration_ms    INTEGER,
   read           INTEGER NOT NULL DEFAULT 0,
+  -- When this mirror learned it was read. The log carries no read time, so
+  -- this is arrival, not the moment somebody finished reading.
+  read_at        INTEGER,
   text_blob      TEXT,
   image_blob     TEXT
 );
