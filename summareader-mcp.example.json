@@ -3,8 +3,12 @@
   "server": "https://sync.example.com",
   "_token": "From a paired device: POST /enroll on the sync server, or `summareader-sync pair` for the first one. Revocable.",
   "token": "",
-  "_master_key": "The 32-byte library key, base64 \u2014 the same value the pairing QR carries. NOT revocable: anything holding this can read everything, for as long as it holds it.",
+  "_master_key": "The 32-byte library key, base64 — the same value the pairing QR carries. NOT revocable: anything holding this can read everything, for as long as it holds it.",
   "master_key": "",
+  "_name": "What this device is called in the app's paired-devices list. Sent once at startup. Without it the server shows whatever label the device that minted the token typed — in practice \"A new device\".",
+  "name": "MCP mirror",
   "_http_token": "Required to call the MCP HTTP port. Without it the port is open to anyone who can reach it and serves the whole library in plaintext; the server warns at startup. Any long random string: openssl rand -base64 32",
-  "http_token": ""
+  "http_token": "",
+  "_fetch_bodies": "Download each article's text as well as its summary, so search covers what the articles say rather than only their titles. A server can afford the bytes; set false if this one cannot.",
+  "fetch_bodies": true
 }
