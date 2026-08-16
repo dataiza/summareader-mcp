@@ -170,6 +170,17 @@ class TestSearching:
     def test_by_title(self, filled):
         assert [i.id for i in filled.search("rust")] == ["rust"]
 
+    def test_a_word_the_needle_only_ends(self, filled):
+        # "rust" is in "trust" and in "crustacean", and neither is an article
+        # about Rust. A match has to start where a word starts.
+        filled.apply_all(
+            [
+                item(id="trust", title="On trust and crustaceans"),
+                item(id="rustc", title="What rustc does first"),
+            ]
+        )
+        assert sorted(i.id for i in filled.search("rust")) == ["rust", "rustc"]
+
     def test_by_source(self, filled):
         assert [i.id for i in filled.search("boat channel")] == ["boat"]
 
@@ -193,6 +204,20 @@ class TestSearching:
         # question "what did I read *called* something like this".
         assert [i.id for i in filled.search(title="old boat")] == ["boat"]
         assert filled.search(title="Boat Channel") == []
+
+    def test_the_named_filters_match_where_a_word_starts_too(self, filled):
+        filled.apply_all(
+            [
+                item(
+                    id="trust",
+                    title="On trust",
+                    channels=[{"id": "c3", "kind": "rss",
+                               "url": "https://t.example", "title": "Entrusted"}],
+                )
+            ]
+        )
+        assert [i.id for i in filled.search(title="rust")] == ["rust"]
+        assert filled.search(source="rusted") == []
 
     def test_filtering_by_when_it_was_published(self, filled):
         published = datetime(2026, 8, 1, 10, tzinfo=timezone.utc)

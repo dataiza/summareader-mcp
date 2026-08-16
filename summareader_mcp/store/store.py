@@ -10,8 +10,10 @@ Read-only in both cases. The mirror pulls and serves; nothing it holds changes.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 import threading
+from functools import lru_cache
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,6 +40,22 @@ class Item:
     @property
     def when(self) -> str:
         return self.published.strftime("%Y-%m-%d") if self.published else ""
+
+
+@lru_cache(maxsize=256)
+def _needle(needle: str) -> re.Pattern[str]:
+    # A word start is "not preceded by a word character", which is what makes
+    # `rust` find "Rust", "rustc" and "Rust:" while leaving "trust" alone. `\b`
+    # would be wrong for a needle beginning with punctuation, where there is no
+    # word boundary to find; this asks about the character before instead, and
+    # so behaves the same whatever the needle starts with. `\w` is Unicode-aware
+    # here, so an accented letter counts as a letter rather than as a boundary.
+    return re.compile(r"(?<!\w)" + re.escape(needle), re.IGNORECASE)
+
+
+def _word_start(haystack: str | None, needle: str) -> int:
+    """True when `needle` appears in `haystack` starting at a word start."""
+    return 1 if haystack and _needle(needle).search(haystack) else 0
 
 
 def open_store(path: Path | str, *, read_only: bool = False) -> Store:
@@ -70,6 +88,7 @@ def open_store(path: Path | str, *, read_only: bool = False) -> Store:
     # this and the app. WAL and a timeout are what make that uneventful rather
     # than a SQLITE_BUSY somebody sees once a week.
     connection.execute("PRAGMA busy_timeout = 5000")
+    connection.create_function("word_start", 2, _word_start, deterministic=True)
     if not read_only:
         connection.execute("PRAGMA journal_mode = WAL")
         connection.executescript(_SCHEMA.read_text())
@@ -153,30 +172,37 @@ class Store:
     ) -> list[Item]:
         """Everything matching, newest first.
 
-        `LIKE` over the columns worth searching rather than FTS5: it is honest
+        A scan over the columns worth searching rather than FTS5: it is honest
         about what it does, needs no index to maintain against a table the log
         rewrites, and a library of a few thousand answers instantly. FTS5 is
         the upgrade path if it ever measurably falls short.
+
+        The needle is matched where a word starts, so `rust` finds "Rust" and
+        "rustc" but not "trust". It is still a plain substring after that
+        first character: the whole query, spaces and all, has to appear in one
+        column in the order it was typed. It is not a word search — several
+        words are not several conditions — and there is no stemming, so
+        `survey` does not find "surveys".
         """
         where: list[str] = []
         args: list[Any] = []
 
         if query.strip():
-            needle = f"%{query.strip().lower()}%"
+            needle = query.strip()
             where.append(
-                "(lower(coalesce(i.title,'')) LIKE ?"
-                " OR lower(coalesce(src.name,'')) LIKE ?"
-                " OR lower(coalesce(s.text,'')) LIKE ?"
-                " OR lower(coalesce(t.text,'')) LIKE ?"
-                " OR lower(i.canonical_url) LIKE ?)"
+                "(word_start(i.title, ?)"
+                " OR word_start(src.name, ?)"
+                " OR word_start(s.text, ?)"
+                " OR word_start(t.text, ?)"
+                " OR word_start(i.canonical_url, ?))"
             )
             args += [needle] * 5
         if title:
-            where.append("lower(coalesce(i.title,'')) LIKE ?")
-            args.append(f"%{title.lower()}%")
+            where.append("word_start(i.title, ?)")
+            args.append(title)
         if source:
-            where.append("lower(coalesce(src.name,'')) LIKE ?")
-            args.append(f"%{source.lower()}%")
+            where.append("word_start(src.name, ?)")
+            args.append(source)
         if since is not None:
             where.append("coalesce(i.published_at, i.fetched_at) >= ?")
             args.append(int(since.timestamp()))

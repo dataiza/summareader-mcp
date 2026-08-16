@@ -87,8 +87,8 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _filters(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--title", help="only titles containing this (substring)")
-    parser.add_argument("--source", help="only this feed (substring)")
+    parser.add_argument("--title", help="only titles with a word starting like this")
+    parser.add_argument("--source", help="only feeds with a word starting like this")
     parser.add_argument("--since", help="published after: 3h, 7d, 3w, 2026-08-01")
     parser.add_argument("--until", help="published before: 3h, 7d, 3w, 2026-08-01")
     parser.add_argument("--read-since", help="read after: 3h, 7d, 2026-08-01")
