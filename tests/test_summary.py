@@ -183,3 +183,29 @@ class TestPoints:
     def test_an_empty_entry_yields_nothing(self):
         summary = parse_summary('{"tldr":"A thing.","points":["", {}, 7]}')
         assert summary.points == []
+
+
+def test_glossary_terms_carry_their_definitions() -> None:
+    raw = (
+        '{"tldr":"An overview long enough to count as one.",'
+        '"glossary":[{"term":"HKDF","definition":"key derivation"},"XChaCha20"]}'
+    )
+
+    summary = parse_summary(raw)
+
+    assert [g.term for g in summary.glossary] == ["HKDF", "XChaCha20"]
+    assert summary.glossary[0].definition == "key derivation"
+    # A bare string is a term with nothing to say about itself, which is every
+    # glossary written before definitions existed.
+    assert summary.glossary[1].definition is None
+
+
+def test_subject_slugs_survive_the_rename() -> None:
+    # Written before the rename: `points` for the entries, `topics` for the
+    # slugs. The Dart side had this fallback and this one did not, so a summary
+    # of that shape lost its slugs here.
+    before = '{"tldr":"An overview long enough.","points":["A."],"topics":["linux"]}'
+    after = '{"tldr":"An overview long enough.","points":["A."],"tags":["linux"]}'
+
+    assert parse_summary(before).tags == ["linux"]
+    assert parse_summary(after).tags == ["linux"]

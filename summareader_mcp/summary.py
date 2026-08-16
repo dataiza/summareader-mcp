@@ -48,12 +48,27 @@ class SummaryPoint:
 
 
 @dataclass(frozen=True)
+class GlossaryEntry:
+    """A term and what it means here.
+
+    The definition is optional because every glossary written before terms had
+    definitions is a list of bare strings, and those are still read — as terms
+    with nothing after them rather than as nothing at all.
+    """
+
+    term: str
+    definition: str | None = None
+
+
+@dataclass(frozen=True)
 class Summary:
     tldr: str
     points: list[SummaryPoint] = field(default_factory=list)
     long: str | None = None
-    topics: list[str] = field(default_factory=list)
-    glossary: list[str] = field(default_factory=list)
+    #: Subject slugs. Named after the key the prompt asks for; it used to be
+    #: ``topics``, which is now what a reader calls the explained ``points``.
+    tags: list[str] = field(default_factory=list)
+    glossary: list[GlossaryEntry] = field(default_factory=list)
     language: str | None = None
 
     @property
@@ -168,15 +183,16 @@ def _from_map(raw: dict[str, Any]) -> Summary:
                         tldr=salvaged.tldr,
                         points=_points(lower.get("points") or lower.get("topics")),
                         long=salvaged.long,
-                        glossary=_strings(lower.get("glossary")),
+                        glossary=_glossary(lower.get("glossary")),
                     )
 
     summary = Summary(
         tldr=_string(lower.get("tldr") or lower.get("summary")) or "",
         points=_points(lower.get("points") or lower.get("topics")),
         long=_long_from(_string(lower.get("long") or lower.get("analysis"))),
-        topics=_strings(lower.get("tags")),
-        glossary=_strings(lower.get("glossary")),
+        tags=_strings(lower.get("tags"))
+        or (_strings(lower.get("topics")) if lower.get("points") else []),
+        glossary=_glossary(lower.get("glossary")),
         language=_string(lower.get("language")),
     )
 
@@ -389,6 +405,38 @@ def _string(value: Any) -> str | None:
         stripped = value.strip()
         return stripped or None
     return None
+
+
+def _glossary(value: Any) -> list[GlossaryEntry]:
+    """A glossary in either shape it can arrive in.
+
+    A bare string is every glossary stored before terms had definitions, and is
+    also what a small model returns when it ignores the object shape. Both are
+    terms; one of them simply has nothing to say about itself.
+    """
+    if not isinstance(value, list):
+        return []
+    entries: list[GlossaryEntry] = []
+    for entry in value:
+        if isinstance(entry, str):
+            term = entry.strip()
+            if term:
+                entries.append(GlossaryEntry(term=term))
+        elif isinstance(entry, dict):
+            term = _string(entry.get("term") or entry.get("name") or entry.get("word"))
+            if not term:
+                continue
+            entries.append(
+                GlossaryEntry(
+                    term=term,
+                    definition=_string(
+                        entry.get("definition")
+                        or entry.get("meaning")
+                        or entry.get("description")
+                    ),
+                )
+            )
+    return entries
 
 
 def _strings(value: Any) -> list[str]:
