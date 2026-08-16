@@ -243,3 +243,49 @@ class TestReadOnly:
         with pytest.raises(RuntimeError):
             guest.apply(item())
         guest.close()
+
+
+def test_tags_reach_the_mirror_and_filter(store) -> None:
+    """A tag applied on a device is a tag this mirror can search by."""
+    store.apply(item("a"))
+    store.apply(item("b"))
+
+    store.apply(LogRecord(op="read", id="a", data={"tags": ["Linux", "kernel"]}))
+
+    assert [i.id for i in store.search(tags=["linux"])] == ["a"]
+    # Lower-cased on the way in, so case is not a second tag.
+    assert [i.id for i in store.search(tags=["Linux"])] == ["a"]
+    # Two narrow rather than widen.
+    assert [i.id for i in store.search(tags=["linux", "kernel"])] == ["a"]
+    assert store.search(tags=["linux", "absent"]) == []
+
+
+def test_a_whole_set_replaces_what_was_there(store) -> None:
+    store.apply(item("a"))
+
+    store.apply(LogRecord(op="read", id="a", data={"tags": ["linux"]}))
+    store.apply(LogRecord(op="read", id="a", data={"tags": []}))
+
+    assert store.search(tags=["linux"]) == []
+
+
+def test_an_item_inherits_the_tags_of_its_source(store) -> None:
+    """Tagging a feed reaches what is already in it, not only what arrives."""
+    store.apply(item("a"))
+
+    store.apply(
+        LogRecord(
+            op="source",
+            id="ch1",
+            data={"tags": ["linux"], "edited": "2026-08-16T09:00:00Z"},
+        )
+    )
+
+    assert [i.id for i in store.search(tags=["linux"])] == ["a"]
+
+
+def test_a_source_nobody_here_knows_is_skipped(store) -> None:
+    """A label is not a reason to learn about a feed."""
+    applied = store.apply(LogRecord(op="source", id="unknown", data={"tags": ["x"]}))
+
+    assert applied is False

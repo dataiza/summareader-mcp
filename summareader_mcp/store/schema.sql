@@ -66,6 +66,22 @@ CREATE TABLE IF NOT EXISTS extracted_texts (
   word_count     INTEGER
 );
 
+-- Tags, on an item and on a source. Two tables rather than one with an owner
+-- column, so each keeps a real foreign key and a deletion takes its tags with
+-- it. An item is searched by its source's tags as well as its own: tagging a
+-- feed is how a hundred articles get organized at once.
+CREATE TABLE IF NOT EXISTS item_tags (
+  item_id        TEXT NOT NULL,
+  tag            TEXT NOT NULL,
+  PRIMARY KEY (item_id, tag)
+);
+
+CREATE TABLE IF NOT EXISTS channel_tags (
+  channel_id     TEXT NOT NULL,
+  tag            TEXT NOT NULL,
+  PRIMARY KEY (channel_id, tag)
+);
+
 -- Where this mirror has read up to, and on which server. The seq is
 -- transport-local, so a cursor without its instance is a number that means
 -- nothing.
@@ -76,3 +92,5 @@ CREATE TABLE IF NOT EXISTS settings (
 
 CREATE INDEX IF NOT EXISTS items_published ON items(published_at);
 CREATE INDEX IF NOT EXISTS item_channels_channel ON item_channels(channel_id);
+CREATE INDEX IF NOT EXISTS item_tags_tag ON item_tags(tag);
+CREATE INDEX IF NOT EXISTS channel_tags_tag ON channel_tags(tag);

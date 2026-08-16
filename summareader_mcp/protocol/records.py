@@ -29,7 +29,13 @@ class LogOp:
     TEXT = "text"
     IMAGE = "image"
 
-    KNOWN = frozenset({ITEM, SUMMARY, ANNOTATION, READ, TOMBSTONE, TEXT, IMAGE})
+    #: A source's tags, and nothing else about it. The only record about a
+    #: channel that is not nested inside an item.
+    SOURCE = "source"
+
+    KNOWN = frozenset(
+        {ITEM, SUMMARY, ANNOTATION, READ, TOMBSTONE, TEXT, IMAGE, SOURCE}
+    )
 
 
 class TombstoneScope:

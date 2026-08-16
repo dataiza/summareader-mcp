@@ -75,6 +75,10 @@ def parse_query(text: str) -> tuple[str, dict[str, Any]]:
             filters[key] = parse_since(value)
         elif key in _FLAGS:
             filters[key] = value.lower() not in _NO
+        elif key == "tag":
+            # Repeatable, and narrowing: `tag:linux tag:kernel` wants both, the
+            # same as it does in the app.
+            filters.setdefault("tags", []).append(value)
         elif key in ("source", "title"):
             filters[key] = value
         else:
@@ -96,6 +100,7 @@ def search_library(
     read_until: datetime | None = None,
     unread: bool | None = None,
     summarized: bool | None = None,
+    tags: list[str] | None = None,
     limit: int = 20,
 ) -> dict[str, Any]:
     items = store.search(
@@ -108,6 +113,7 @@ def search_library(
         read_until=read_until,
         unread=unread,
         summarized=summarized,
+        tags=tags,
         limit=max(1, min(limit, 100)),
     )
     return {

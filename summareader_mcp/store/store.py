@@ -148,6 +148,7 @@ class Store:
         read_until: datetime | None = None,
         unread: bool | None = None,
         summarized: bool | None = None,
+        tags: Iterable[str] | None = None,
         limit: int = 20,
     ) -> list[Item]:
         """Everything matching, newest first.
@@ -193,6 +194,18 @@ class Store:
             args.append(0 if unread else 1)
         if summarized is not None:
             where.append("s.text IS NOT NULL" if summarized else "s.text IS NULL")
+        # An item's own tag, or a tag on any source it arrived from — the same
+        # rule the app filters by, so the two answer alike. Several tags narrow
+        # rather than widen.
+        for tag in sorted({t.strip().lower() for t in (tags or ()) if t.strip()}):
+            where.append(
+                "(EXISTS (SELECT 1 FROM item_tags it"
+                "          WHERE it.item_id = i.id AND it.tag = ?)"
+                " OR EXISTS (SELECT 1 FROM item_channels ic"
+                "              JOIN channel_tags ct ON ct.channel_id = ic.channel_id"
+                "             WHERE ic.item_id = i.id AND ct.tag = ?))"
+            )
+            args += [tag, tag]
 
         sql = f"""
             SELECT i.id, i.title, i.canonical_url, i.published_at, i.fetched_at,
@@ -295,6 +308,7 @@ class Store:
             LogOp.TEXT: self._apply_blob_pointer("text_blob"),
             LogOp.IMAGE: self._apply_blob_pointer("image_blob"),
             LogOp.TOMBSTONE: self._apply_tombstone,
+            LogOp.SOURCE: self._apply_source,
         }.get(record.op)
         return bool(handler and handler(record))
 
@@ -404,8 +418,16 @@ class Store:
     def _apply_read(self, record: LogRecord) -> bool:
         # A delta: only the fields that changed are present, so a missing
         # `read` is not `false`.
+        #
+        # Tags are a whole set on the same op — present means "these and no
+        # others", [] means none — and are applied whether or not the record
+        # also says anything about reading.
+        tagged = False
+        if isinstance(record.data.get("tags"), list):
+            self._write_tags("item_tags", "item_id", record.id, record.data["tags"])
+            tagged = True
         if "read" not in record.data:
-            return False
+            return tagged
         read = bool(record.data["read"])
         if not read:
             # Unread again means the reading did not happen, so neither did
@@ -421,6 +443,44 @@ class Store:
         else:
             self._db.execute("UPDATE items SET read = 1 WHERE id = ?", [record.id])
         return True
+
+    def _apply_source(self, record: LogRecord) -> bool:
+        """A source's tags, as a whole set.
+
+        A channel this mirror has never heard of is skipped rather than
+        created: a label is not a reason to learn about a feed, and item
+        records are what introduce one.
+        """
+        stated = record.data.get("tags")
+        if not isinstance(stated, list):
+            return False
+        known = self._db.execute("SELECT 1 FROM channels WHERE id = ?", [record.id])
+        if not known:
+            return False
+        self._write_tags("channel_tags", "channel_id", record.id, stated)
+        return True
+
+    def _write_tags(
+        self, table: str, column: str, owner: str, tags: Iterable[Any]
+    ) -> None:
+        """The whole set, replaced.
+
+        Lower-cased and trimmed to match how the app stores them, so a search
+        does not have to case-fold.
+        """
+        wanted = sorted(
+            {
+                tag.strip().lower()
+                for tag in tags
+                if isinstance(tag, str) and tag.strip()
+            }
+        )
+        self._db.execute(f"DELETE FROM {table} WHERE {column} = ?", [owner])
+        for tag in wanted:
+            self._db.execute(
+                f"INSERT OR IGNORE INTO {table} ({column}, tag) VALUES (?, ?)",
+                [owner, tag],
+            )
 
     def _apply_blob_pointer(self, column: str):
         def apply(record: LogRecord) -> bool:

@@ -87,7 +87,9 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
             "source, summary or article text; `title` and `source` match one "
             "of those alone, partially. `since`/`until` bound when an article "
             "was published and `read_since`/`read_until` when it was read — "
-            "each takes 3h, 7d, 3w, or a date like 2026-08-01. Newest first."
+            "each takes 3h, 7d, 3w, or a date like 2026-08-01. `tags` matches "
+            "an article's own tags or the tags of the feed it came from, and "
+            "several narrow rather than widen. Newest first."
         ),
     )
     def search_library(
@@ -100,6 +102,7 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
         read_until: str | None = None,
         unread: bool | None = None,
         summarized: bool | None = None,
+        tags: list[str] | None = None,
         limit: int = 20,
     ) -> dict:
         return tools.search_library(
@@ -113,6 +116,7 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
             read_until=parse_since(read_until),
             unread=unread,
             summarized=summarized,
+            tags=tags,
             limit=limit,
         )
 
