@@ -7,9 +7,9 @@ keeps working. What changed is that they now answer.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import sys
+import threading
 from datetime import timedelta
 
 from mcp.server.mcpserver import MCPServer
@@ -28,7 +28,13 @@ log = logging.getLogger("summareader_mcp")
 PULL_EVERY = timedelta(minutes=5)
 
 
-def serve(config: Config, *, transport: str = "stdio", port: int = 8100) -> int:
+def serve(
+    config: Config,
+    *,
+    transport: str = "stdio",
+    host: str = "127.0.0.1",
+    port: int = 8100,
+) -> int:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
@@ -60,7 +66,8 @@ def serve(config: Config, *, transport: str = "stdio", port: int = 8100) -> int:
     if config.reads_a_local_library:
         log.info("reading %s, read-only; not syncing", config.database)
     else:
-        _start_syncing(config, store, metrics)
+        syncer = Syncer(config, store, metrics)
+        syncer.start()
 
     if transport == "http":
         # Passed to run, not set on settings: `Settings` carries the server's
@@ -69,11 +76,13 @@ def serve(config: Config, *, transport: str = "stdio", port: int = 8100) -> int:
         # on every restart while stdio went on working, because stdio is the
         # transport with nowhere to put a port.
         #
-        # 0.0.0.0 because a container's port is published by the runtime, and
-        # a process bound to loopback inside one is reachable by nothing. The
-        # boundary is the published port and the token, not this address —
-        # see the warning above.
-        server.run(transport="streamable-http", host="0.0.0.0", port=port)
+        # Loopback by default: on a desktop this port is for the client on the
+        # same machine, and binding every interface there asks the firewall a
+        # question the person did not want asked. A container needs the
+        # opposite — a process bound to loopback inside one is reachable by
+        # nothing — so it passes --host=0.0.0.0, and its boundary stays the
+        # published port and the token. See the Dockerfile.
+        server.run(transport="streamable-http", host=host, port=port)
     else:
         server.run(transport="stdio")
     return 0
@@ -203,36 +212,66 @@ def _authorised(request: Request, config: Config) -> bool:
     return header.removeprefix("Bearer ").strip() == config.http_token
 
 
-def _start_syncing(config: Config, store, metrics: Metrics) -> None:
-    """Pull now, then every five minutes, without blocking the server.
+class Syncer:
+    """Pull now, then every five minutes, until told to stop.
+
+    Lives outside `serve` because a front end with no MCP transport — a desktop
+    window — wants the same loop, and wants to stop it and to ask for a pull
+    without waiting out the interval. Hence an event waited on rather than a
+    sleep: both questions are answered the moment they are asked.
 
     A thread rather than a task: the store is synchronous SQLite, and the
     alternative is making every tool async to no benefit.
     """
-    import threading
 
-    def loop() -> None:
-        with Backend(config.server, config.token) as backend:
-            if config.name:
-                try:
-                    backend.rename(config.name)
-                    log.info("this device is called %r on the server", config.name)
-                except Exception as error:  # noqa: BLE001 — a name is not vital
-                    log.info("could not set the device name: %s", error)
-            puller = Puller(config, store, backend)
-            while True:
+    def __init__(
+        self,
+        config: Config,
+        store,
+        metrics: Metrics | None = None,
+        *,
+        every: timedelta = PULL_EVERY,
+    ) -> None:
+        self._config = config
+        self._store = store
+        self._metrics = metrics or Metrics()
+        self._every = every.total_seconds()
+        self._wake = threading.Event()
+        self._stop = threading.Event()
+
+    def start(self) -> threading.Thread:
+        thread = threading.Thread(target=self.run, name="sync", daemon=True)
+        thread.start()
+        return thread
+
+    def run(self) -> None:
+        """The loop itself, on whichever thread calls this."""
+        with Backend(self._config.server, self._config.token) as backend:
+            self._name(backend)
+            puller = Puller(self._config, self._store, backend)
+            while not self._stop.is_set():
                 report = puller.pull()
-                metrics.pulled(report.ok)
+                self._metrics.pulled(report.ok)
                 log.info("%s", report)
-                _sleep(PULL_EVERY.total_seconds())
+                self._wake.wait(self._every)
+                self._wake.clear()
 
-    threading.Thread(target=loop, name="sync", daemon=True).start()
+    def pull_now(self) -> None:
+        """Cut the wait short. The pull itself is unchanged."""
+        self._wake.set()
 
+    def stop(self) -> None:
+        self._stop.set()
+        self._wake.set()
 
-def _sleep(seconds: float) -> None:
-    import time
-
-    time.sleep(seconds)
+    def _name(self, backend: Backend) -> None:
+        if not self._config.name:
+            return
+        try:
+            backend.rename(self._config.name)
+            log.info("this device is called %r on the server", self._config.name)
+        except Exception as error:  # noqa: BLE001 — a name is not vital
+            log.info("could not set the device name: %s", error)
 
 
 # `_since` lived here too, taking whole days. One parser now, in tools.

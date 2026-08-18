@@ -14,13 +14,22 @@ from datetime import datetime
 from pathlib import Path
 
 from . import __version__
-from .config import Config, ConfigError
+from .config import Config, ConfigError, default_config_path
 from .report import render
 from .store import Store, open_store
 from .tools import BadSince, parse_since
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Text out in utf-8 whatever the console's codepage says, because half of
+    # what this prints — an arrow in a status line, somebody's article title —
+    # is not in cp1252, and a redirected stdout on Windows is exactly where
+    # that becomes a traceback instead of a line. Anything that is not a real
+    # text stream, pytest's capture among them, has no such problem.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
     parser = _parser()
     args = parser.parse_args(argv)
     try:
@@ -39,7 +48,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=__version__)
     parser.add_argument(
-        "--config", metavar="FILE", help="config file (default: /config/summareader-mcp.json)"
+        "--config",
+        metavar="FILE",
+        help=f"config file (default: {default_config_path()})",
     )
     parser.add_argument(
         "--library",
@@ -52,6 +63,12 @@ def _parser() -> argparse.ArgumentParser:
 
     serve = sub.add_parser("serve", help="the MCP server (the default)")
     serve.add_argument("--transport", choices=("stdio", "http"), default="stdio")
+    serve.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="what the http transport binds (default: loopback; a container "
+        "wants 0.0.0.0, since its port is published by the runtime)",
+    )
     serve.add_argument("--port", type=int, default=8100)
     serve.set_defaults(run=_serve)
 
@@ -129,7 +146,9 @@ def _report(args) -> int:
         items = _query(store, args)
     text = render(items, args.format, title=args.heading)
     if args.out:
-        Path(args.out).write_text(text)
+        # utf-8 rather than whatever the console's codepage is: a title with an
+        # em dash in it is not an encoding error on anybody's machine.
+        Path(args.out).write_text(text, encoding="utf-8")
         print(f"{len(items)} articles → {args.out}", file=sys.stderr)
     else:
         print(text, end="")
@@ -173,6 +192,7 @@ def _serve(args) -> int:
     return serve(
         _config(args),
         transport=getattr(args, "transport", "stdio"),
+        host=getattr(args, "host", "127.0.0.1"),
         port=getattr(args, "port", 8100),
     )
 

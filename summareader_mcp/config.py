@@ -10,11 +10,49 @@ from __future__ import annotations
 import base64
 import json
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_CONFIG = "/config/summareader-mcp.json"
-DEFAULT_CACHE = "/cache"
+NAME = "summareader-mcp"
+
+
+def _home(platform: str, env: dict[str, str]) -> tuple[Path, Path]:
+    """Where this platform lets an unprivileged program keep things.
+
+    The old answer was /config and /cache, which is right in the container and
+    nowhere else: on Windows those resolve onto the system drive's root, and on
+    macOS they belong to root and cannot be created by the app that needs them.
+    The container keeps its old paths by passing the environment variables
+    below — see the Dockerfile.
+    """
+    if platform == "win32":
+        base = Path(env.get("APPDATA") or Path.home() / "AppData/Roaming")
+        cache = Path(env.get("LOCALAPPDATA") or Path.home() / "AppData/Local")
+        return base / NAME, cache / NAME / "cache"
+    if platform == "darwin":
+        return (
+            Path.home() / "Library/Application Support" / NAME,
+            Path.home() / "Library/Caches" / NAME,
+        )
+    return (
+        Path(env.get("XDG_CONFIG_HOME") or Path.home() / ".config") / NAME,
+        Path(env.get("XDG_CACHE_HOME") or Path.home() / ".cache") / NAME,
+    )
+
+
+def default_config_path(
+    *, platform: str | None = None, environment: dict[str, str] | None = None
+) -> Path:
+    env = dict(os.environ if environment is None else environment)
+    return _home(platform or sys.platform, env)[0] / f"{NAME}.json"
+
+
+def default_cache_dir(
+    *, platform: str | None = None, environment: dict[str, str] | None = None
+) -> Path:
+    env = dict(os.environ if environment is None else environment)
+    return _home(platform or sys.platform, env)[1]
 
 
 class ConfigError(Exception):
@@ -75,12 +113,12 @@ class Config:
             file
             or env.get("SUMMAREADER_MCP_CONFIG")
             or env.get("ALLREADER_MCP_CONFIG")
-            or DEFAULT_CONFIG
+            or default_config_path(environment=env)
         )
         stored: dict = {}
         if path.exists():
             try:
-                stored = json.loads(path.read_text())
+                stored = json.loads(path.read_text(encoding="utf-8"))
             except json.JSONDecodeError as error:
                 raise ConfigError(f"{path} is not valid JSON: {error}") from error
 
@@ -109,7 +147,7 @@ class Config:
             cache_dir=Path(
                 env.get("SUMMAREADER_MCP_CACHE")
                 or env.get("ALLREADER_MCP_CACHE")
-                or DEFAULT_CACHE
+                or default_cache_dir(environment=env)
             ),
             name=pick("name", "SUMMAREADER_MCP_NAME"),
             http_token=pick("http_token", "SUMMAREADER_MCP_TOKEN"),

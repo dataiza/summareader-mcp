@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -72,7 +75,7 @@ class TestReadingSomebodyElsesLibrary:
     def test_a_report_goes_to_a_file(self, library, tmp_path, capsys):
         out = tmp_path / "report.md"
         assert main(["--library", str(library), "report", "--out", str(out)]) == 0
-        assert "A first article" in out.read_text()
+        assert "A first article" in out.read_text(encoding="utf-8")
         assert str(out) in capsys.readouterr().err
 
 
@@ -161,3 +164,50 @@ class TestQueryLanguage:
         _, filters = parse_query("since:7d")
         week = (datetime.now(timezone.utc) - filters["since"]).total_seconds()
         assert abs(week - timedelta(days=7).total_seconds()) < 5
+
+
+def test_a_report_is_written_as_utf8_whatever_the_locale_says(tmp_path):
+    """The Windows bug, reproduced here.
+
+    `write_text` with no encoding is the console's codepage — cp1252 there, and
+    ascii under this environment — so a title with an em dash in it used to be
+    a UnicodeEncodeError rather than a report. A subprocess because the locale
+    is decided when the interpreter starts.
+    """
+    library = tmp_path / "library.sqlite"
+    store = open_store(library)
+    store.apply_all(
+        [
+            LogRecord(
+                op=LogOp.ITEM,
+                id="a",
+                data={
+                    "url": "https://example.com/a",
+                    "title": "Café — a naïve résumé",
+                    "fetched": "2026-08-01T10:00:00.000Z",
+                    "read": False,
+                },
+            )
+        ]
+    )
+    store.close()
+
+    out = tmp_path / "report.md"
+    done = subprocess.run(
+        [
+            sys.executable, "-m", "summareader_mcp.cli",
+            "--library", str(library), "report", "--out", str(out),
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        env={
+            **os.environ,
+            "LC_ALL": "C",
+            "LANG": "C",
+            "PYTHONCOERCECLOCALE": "0",
+            "PYTHONUTF8": "0",
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert done.returncode == 0, done.stderr
+    assert "Café — a naïve résumé" in out.read_text(encoding="utf-8")

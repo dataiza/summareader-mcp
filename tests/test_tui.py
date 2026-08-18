@@ -114,7 +114,7 @@ async def test_export_writes_the_current_results(app, tmp_path, monkeypatch):
 
         written = list(tmp_path.glob("summareader-*.md"))
         assert len(written) == 1
-        text = written[0].read_text()
+        text = written[0].read_text(encoding="utf-8")
         assert "Buying an old boat" in text
         assert "Why Rust" not in text, "only what was on screen"
         assert str(written[0]) in str(app.query_one("#status", Static).content)

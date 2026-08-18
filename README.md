@@ -194,6 +194,21 @@ Running it as a service rather than a container changes what `server` in the
 config has to be: `http://sync:8099` is a Docker service name and resolves only
 on that network.
 
+### Where it keeps things
+
+With nothing said, the config file and the cache go where the platform puts
+them: `~/.config/summareader-mcp/` and `~/.cache/summareader-mcp/` on Linux
+(`XDG_CONFIG_HOME` and `XDG_CACHE_HOME` are honoured), `~/Library/Application
+Support/` and `~/Library/Caches/` on macOS, and `%APPDATA%`/`%LOCALAPPDATA%` on
+Windows. `SUMMAREADER_MCP_CONFIG` and `SUMMAREADER_MCP_CACHE` override both and
+always win — which is how the container keeps `/config` and `/cache`, and how
+`scripts/run.sh` points at the copy beside this repository.
+
+The HTTP transport binds loopback unless `--host` says otherwise. A container
+passes `--host=0.0.0.0`, because loopback inside one is reachable by nothing
+and the port is published by the runtime; on a desktop the same address is a
+firewall prompt nobody asked for.
+
 ### In Docker
 
 ```sh
@@ -223,7 +238,7 @@ uv venv && uv pip install -e ".[dev]"
 pytest
 ```
 
-Ninety-four tests: the protocol against the app's own vectors, the summary
+A hundred and thirty-nine tests: the protocol against the app's own vectors, the summary
 repair ladder against a corpus of real model failures, the store, the puller
 against a fake sync server, the command line, and the terminal interface driven
 headlessly.
@@ -234,11 +249,27 @@ this opens them with, so the two agree by construction — the vectors are what
 stop that being circular, because they were produced by the Dart implementation
 instead.
 
-The decrypted mirror is kept in `/cache` between runs, so a restart asks for
+The decrypted mirror is kept in the cache directory between runs, so a restart asks for
 what has arrived since rather than re-reading and re-decrypting the whole log.
 It is still only a cache: deleting the volume costs one re-read and no data,
 and anything unreadable in it — corrupt, half-written, or from a newer format
 — is treated as empty rather than as an error.
+
+## As one executable
+
+```sh
+./scripts/freeze.sh          # dist/summareader-mcp, about 30 MB
+```
+
+PyInstaller, driven by `summareader-mcp.spec`. One file that needs no Python on
+the machine it runs on, which is what a desktop build has to be able to hand
+over. The script builds it and then runs it — `--help`, a library created from
+`schema.sql`, and that same file read back through `--library` — because the
+interesting failure is not at start-up: `schema.sql` is a data file, and a
+bundle that lost it starts perfectly and fails when somebody opens a library.
+
+Built on the machine it is built for: this produces a Linux executable, and
+macOS and Windows builds have to run on macOS and Windows.
 
 ## Metrics
 

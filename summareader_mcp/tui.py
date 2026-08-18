@@ -191,7 +191,10 @@ class LibraryUI(App[int]):
                 self._items,
                 "md",
                 title=f"Library report — {query}" if query else "Library report",
-            )
+            ),
+            # utf-8, because the heading above has an em dash in it and half
+            # the titles below it are not ASCII either.
+            encoding="utf-8",
         )
         self._say(f"{len(self._items)} articles → {path}")
 

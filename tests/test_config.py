@@ -8,15 +8,23 @@ from pathlib import Path
 
 import pytest
 
-from summareader_mcp.config import Config, ConfigError
+from summareader_mcp.config import (
+    Config,
+    ConfigError,
+    default_cache_dir,
+    default_config_path,
+)
 
 KEY = base64.b64encode(bytes(range(32))).decode()
 
 
 def write(tmp_path: Path, **fields) -> Path:
     path = tmp_path / "config.json"
-    path.write_text(json.dumps({"server": "https://sync.example", "token": "t",
-                                "master_key": KEY, **fields}))
+    path.write_text(
+        json.dumps({"server": "https://sync.example", "token": "t",
+                    "master_key": KEY, **fields}),
+        encoding="utf-8",
+    )
     return path
 
 
@@ -48,7 +56,7 @@ class TestLoading:
 
     def test_what_is_missing_is_named(self, tmp_path):
         path = tmp_path / "config.json"
-        path.write_text(json.dumps({"server": "https://s.example"}))
+        path.write_text(json.dumps({"server": "https://s.example"}), encoding="utf-8")
         with pytest.raises(ConfigError) as raised:
             Config.load(file=path, environment={})
         assert "token" in str(raised.value) and "master_key" in str(raised.value)
@@ -100,3 +108,63 @@ class TestBodies:
             file=write(tmp_path), environment={"SUMMAREADER_MCP_BODIES": "false"}
         )
         assert not config.fetch_bodies
+
+
+class TestWhereItLooksWhenNobodySays:
+    """The defaults were /config and /cache, which only a container can use.
+
+    On Windows those land on the root of the system drive and on macOS they
+    belong to root, so an unprivileged app cannot create either. What has to
+    keep working is the container and the systemd unit, and both say where
+    they want things in the environment.
+    """
+
+    def test_linux_follows_xdg(self, tmp_path):
+        env = {"XDG_CONFIG_HOME": str(tmp_path / "c"), "XDG_CACHE_HOME": str(tmp_path / "k")}
+        assert default_config_path(platform="linux", environment=env) == (
+            tmp_path / "c/summareader-mcp/summareader-mcp.json"
+        )
+        assert default_cache_dir(platform="linux", environment=env) == (
+            tmp_path / "k/summareader-mcp"
+        )
+
+    def test_macos_uses_the_user_library(self):
+        path = default_config_path(platform="darwin", environment={})
+        assert "Library/Application Support/summareader-mcp" in str(path)
+        assert str(path).startswith(str(Path.home()))
+
+    def test_windows_uses_appdata(self, tmp_path):
+        env = {"APPDATA": str(tmp_path / "Roaming"), "LOCALAPPDATA": str(tmp_path / "Local")}
+        assert default_config_path(platform="win32", environment=env) == (
+            tmp_path / "Roaming/summareader-mcp/summareader-mcp.json"
+        )
+        assert default_cache_dir(platform="win32", environment=env) == (
+            tmp_path / "Local/summareader-mcp/cache"
+        )
+
+    def test_nothing_defaulted_is_an_absolute_posix_path(self):
+        for platform in ("linux", "darwin", "win32"):
+            for path in (
+                default_config_path(platform=platform, environment={}),
+                default_cache_dir(platform=platform, environment={}),
+            ):
+                assert not str(path).startswith("/config")
+                assert not str(path).startswith("/cache")
+
+    def test_the_container_still_gets_the_paths_it_mounts(self, tmp_path):
+        # What the Dockerfile sets and the systemd unit passes. This is the
+        # whole compatibility story: the environment wins, as it always did.
+        config = write(tmp_path)
+        loaded = Config.load(
+            file=config,
+            environment={"SUMMAREADER_MCP_CACHE": "/cache"},
+        )
+        assert loaded.cache_dir == Path("/cache")
+        assert loaded.database == Path("/cache/library.sqlite")
+
+    def test_the_config_file_is_found_by_environment_too(self, tmp_path):
+        config = write(tmp_path)
+        loaded = Config.load(
+            file=None, environment={"SUMMAREADER_MCP_CONFIG": str(config)}
+        )
+        assert loaded.server == "https://sync.example"

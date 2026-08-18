@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 import sqlite3
 import threading
+from importlib import resources
 from functools import lru_cache
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -22,7 +23,10 @@ from typing import Any, Iterable
 from ..protocol.records import LogOp, LogRecord, channel_name, channels_of
 from ..summary import Summary, SummaryParseError, parse_summary_or_prose
 
-_SCHEMA = Path(__file__).with_name("schema.sql")
+# Asked of the package rather than of __file__: a frozen bundle has no source
+# tree beside it to look next to, and this is the one lookup that has to work
+# from a checkout, from a wheel and from an executable alike.
+_SCHEMA = resources.files(__package__).joinpath("schema.sql")
 
 
 @dataclass(frozen=True)
@@ -91,7 +95,7 @@ def open_store(path: Path | str, *, read_only: bool = False) -> Store:
     connection.create_function("word_start", 2, _word_start, deterministic=True)
     if not read_only:
         connection.execute("PRAGMA journal_mode = WAL")
-        connection.executescript(_SCHEMA.read_text())
+        connection.executescript(_SCHEMA.read_text(encoding="utf-8"))
         # `CREATE TABLE IF NOT EXISTS` does nothing to a table that is already
         # there, so a column added later needs saying twice. The cache is
         # disposable and could simply be rebuilt, but a rebuild is every blob

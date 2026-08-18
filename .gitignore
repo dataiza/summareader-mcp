@@ -12,6 +12,11 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 
+# What PyInstaller leaves behind. `build/` is already ignored above; this is
+# the executable itself, which is thirty megabytes and rebuilt in half a
+# minute by scripts/freeze.sh.
+dist/
+
 # The decrypted library. Rebuilt from the log in about a minute, and the
 # single most complete plaintext copy of it that exists — not something to
 # hand to a git remote.

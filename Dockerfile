@@ -40,6 +40,13 @@ EXPOSE 8100
 HEALTHCHECK --interval=60s --timeout=5s --start-period=20s \
     CMD curl -fsS http://127.0.0.1:8100/health || exit 1
 
+# The paths this image has always used, said out loud now that the defaults are
+# per-platform and no longer these. The compose file mounts the config here and
+# the cache volume there, so nothing about the image's layout changes.
+ENV SUMMAREADER_MCP_CONFIG=/config/summareader-mcp.json \
+    SUMMAREADER_MCP_CACHE=/cache
+
 # HTTP rather than stdio, because a container is not a subprocess its client
-# can start.
-CMD ["summareader-mcp", "serve", "--transport=http", "--port=8100"]
+# can start. Every interface, because loopback inside a container is reachable
+# by nothing and the port is published by the runtime.
+CMD ["summareader-mcp", "serve", "--transport=http", "--host=0.0.0.0", "--port=8100"]
