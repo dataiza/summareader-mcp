@@ -42,7 +42,11 @@ class LibraryUI(App[int]):
        exactly the question the pane stops answering. */
     #article-head { dock: top; height: auto; padding: 0 1; background: $panel; }
     #article { padding: 0 1; }
-    #status { dock: bottom; height: 1; color: $text-muted; }
+    /* Not docked: the Footer docks to the bottom too, and two widgets
+       claiming the same row means the one composed last paints over the
+       other — which is why this line was invisible in a real run. Last in
+       the vertical layout puts it exactly where dock meant to. */
+    #status { height: 1; color: $text-muted; }
     """
 
     BINDINGS = [

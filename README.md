@@ -99,36 +99,6 @@ Read-only, deliberately. A tool that wrote to the log would be a second writer
 of a format the app owns, and getting that wrong corrupts a library rather than
 returning a bad answer.
 
-## The command line
-
-Everything the tools do, without a language model in the room — which is also
-how you check what the tools are answering.
-
-```sh
-summareader-mcp search "borrow checker" --since 30d
-summareader-mcp recent --limit 10
-summareader-mcp report --source "Hacker News" --since 7d --out week.md
-summareader-mcp status
-summareader-mcp pull              # sync once and say what arrived
-summareader-mcp ui                # the terminal interface
-summareader-mcp serve             # the MCP server (the default)
-```
-
-`--format json` on any of the reading commands, for something else to consume.
-
-The terminal interface has one box rather than a flag for each of those, so it
-reads fields out of what is typed:
-
-```
-source: "Colion Noir" since:7d unread:yes
-title:rust before:2026-08-01
-```
-
-`source`, `title`, `since`, `until`, `read_since`, `read_until`, `unread` and
-`summarized`, with `feed`, `after`, `before` and `read` as aliases. Everything
-else stays words to search for, so a title with a colon in it costs a search
-rather than an error.
-
 ## Reading a library that is already here
 
 If this runs on the same machine as the app — the box that fetches and
@@ -144,9 +114,14 @@ time. Every command and every MCP tool works the same way.
 
 ## Running it
 
-Configuration is three values: the sync server, a device token, and the master
-key. Put them in a file rather than the environment — `docker inspect` prints
-an environment, and a file can be mounted read-only.
+Six ways to start it, and what separates them is who is on the other end: a
+model, a person at a terminal, a shell, or nobody at all until a client
+connects. They are the same program over the same functions — the choice is
+about where it lives, not about what it can answer.
+
+Configuration is three values, whichever way: the sync server, a device token,
+and the master key. Put them in a file rather than the environment — `docker
+inspect` prints an environment, and a file can be mounted read-only.
 
 ```sh
 cp summareader-mcp.example.json summareader-mcp.local.json   # then fill it in
@@ -157,19 +132,106 @@ The device token comes from a paired device (`POST /enroll`) or from
 the value the pairing QR carries — **it is not revocable, and anything holding
 it can read everything.**
 
-### As a subprocess, for a local MCP client
+None of this is needed to read a library that is already on the machine; see
+[above](#reading-a-library-that-is-already-here), which needs no server, no
+token and no key.
+
+### 1. As an MCP server
 
 ```sh
-./scripts/run.sh                             # stdio, which is what clients expect
-./scripts/run.sh --docker                    # HTTP in a container — needs no Python
-./scripts/run.sh search rust                 # or any other subcommand
+./scripts/run.sh                                   # stdio, and no port at all
+./scripts/run.sh serve --transport=http --port=8100
 ```
 
-`--docker` serves HTTP on 8100 rather than stdio, because a container is not a
-subprocess its client can start — there is nothing on the other end of its
-standard input. An MCP client configured with `command:` wants the first line.
+**Stdio** is the default because it is what a local client expects: configured
+with a `command:`, it starts this process itself and talks down its standard
+input. Nothing listens, nothing is published, and there is no token to get
+wrong — the client and the server are the same process tree, so the operating
+system has already answered the question a token would be asking.
 
-### Left running
+**HTTP** is for a client that cannot start the process: one on another machine,
+or one talking to a container or a service, neither of which is a subprocess of
+anything. Port 8100 unless `--port` says otherwise.
+
+The HTTP transport binds loopback unless `--host` says otherwise. That is the
+right default nearly everywhere and the wrong one inside a container, where
+loopback is reachable by nothing and the port is published by the runtime — so
+the container passes `--host=0.0.0.0` and a desktop does not, because there the
+same address is a firewall prompt nobody asked for.
+
+Set `http_token` in the config and callers must present it as a bearer token.
+Without one the port is open to anyone who can reach it, and the server says so
+at startup — the encryption ends at this process, which is what it is for and
+why it needs a boundary of its own. `/health` never needs the token: it reports
+whether the process is up and nothing about what it holds, and a health check
+that needs a secret breaks the day the secret rotates.
+
+### 2. The terminal interface
+
+```sh
+summareader-mcp ui
+```
+
+![The terminal interface: a query box, results, and the selected article beside them](docs/tui.svg)
+
+A query at the top, what matches under it, the article beside them, and `e` to
+write the current result set to a Markdown file where you started it. `u` and
+`s` narrow to unread and to summarized, `esc` goes back to the box, `q` leaves.
+
+It has one box rather than a flag for each filter, so it reads fields out of
+what is typed:
+
+```
+source: "Colion Noir" since:7d unread:yes
+title:rust before:2026-08-01
+```
+
+`source`, `title`, `since`, `until`, `read_since`, `read_until`, `unread` and
+`summarized`, with `feed`, `after`, `before` and `read` as aliases. Everything
+else stays words to search for, so a title with a colon in it costs a search
+rather than an error.
+
+There is no desktop window. One is planned; nothing in this repository draws
+one, and the terminal is where a person reads this mirror today.
+
+The picture above is the program rather than a drawing of it —
+`scripts/screenshot.py` seeds a small library through the real store and paints
+the real interface headlessly, and writes `docs/tui.svg`:
+
+```sh
+uv run python scripts/screenshot.py
+```
+
+An SVG rather than a PNG because it stays readable when GitHub scales it, and a
+script rather than a screenshot taken by hand because one nobody can reproduce
+goes stale without ever saying so.
+
+### 3. On the command line
+
+Everything the tools do, without a language model in the room — which is also
+how you check what the tools are answering.
+
+```sh
+summareader-mcp search "borrow checker" --since 30d
+summareader-mcp recent --limit 10
+summareader-mcp report --source "Hacker News" --since 7d --out week.md
+summareader-mcp status
+summareader-mcp pull              # sync once and say what arrived
+```
+
+`search` takes the same filters as `search_library` as flags: `--title`,
+`--source`, `--unread`, `--summarized`, `--since`/`--until` for when an article
+was published and `--read-since`/`--read-until` for when it was read. `recent`
+is the newest of them, `report` writes a set of articles down as Markdown, CSV
+or JSON, and `status` says how much is here and how far the log has been read —
+the first thing to run when a query comes back empty.
+
+`--format json` on any of the reading commands, for something else to consume.
+
+From a checkout, `./scripts/run.sh search rust` runs any of these against the
+config and cache beside the repository.
+
+### 4. As a user service
 
 ```sh
 ./scripts/install.sh              # its own venv, installed as a systemd user service
@@ -185,6 +247,20 @@ a plaintext copy of the library, so it belongs to one person and needs no root
 to install or remove. `scripts/summareader-mcp.service` is the definition the
 installer fills in.
 
+**The unit now passes `--host=127.0.0.1`, where it used to bind every
+interface.** That is a deliberate break, and it is the kind that arrives
+looking like a bug: if you reach your mirror from another machine on your LAN,
+it will stop answering after the next install, and nothing will say why. Put it
+back explicitly, and set `http_token` before you do:
+
+```ini
+ExecStart=… serve --transport=http --host=0.0.0.0 --port=8100
+```
+
+The old default was bind-everything by accident rather than by choice, and a
+user service that serves an entire library in plaintext to the network, with
+the token optional, is not something anybody decided on purpose.
+
 The installer refuses to start without a config and warns when `http_token` is
 unset, because that port serves the whole library in plaintext to anything that
 can reach it. The Docker path installs no unit: `restart: unless-stopped` and
@@ -194,22 +270,7 @@ Running it as a service rather than a container changes what `server` in the
 config has to be: `http://sync:8099` is a Docker service name and resolves only
 on that network.
 
-### Where it keeps things
-
-With nothing said, the config file and the cache go where the platform puts
-them: `~/.config/summareader-mcp/` and `~/.cache/summareader-mcp/` on Linux
-(`XDG_CONFIG_HOME` and `XDG_CACHE_HOME` are honoured), `~/Library/Application
-Support/` and `~/Library/Caches/` on macOS, and `%APPDATA%`/`%LOCALAPPDATA%` on
-Windows. `SUMMAREADER_MCP_CONFIG` and `SUMMAREADER_MCP_CACHE` override both and
-always win — which is how the container keeps `/config` and `/cache`, and how
-`scripts/run.sh` points at the copy beside this repository.
-
-The HTTP transport binds loopback unless `--host` says otherwise. A container
-passes `--host=0.0.0.0`, because loopback inside one is reachable by nothing
-and the port is published by the runtime; on a desktop the same address is a
-firewall prompt nobody asked for.
-
-### In Docker
+### 5. In a container
 
 ```sh
 docker compose up -d
@@ -217,19 +278,51 @@ curl http://127.0.0.1:8100/health
 ```
 
 HTTP rather than stdio, because a container is not a subprocess its client can
-start.
+start. `scripts/run.sh --docker` is the same image in the foreground, for
+trying it on a machine with no Python of the right version.
 
-Set `http_token` in the config and callers must present it as a bearer token.
-Without one the port is open to anyone who can reach it, and the server says
-so at startup — the encryption ends at this process, which is what it is for
-and why it needs a boundary of its own. `/health` never needs the token: it
-reports whether the process is up and nothing about what it holds, and a
-health check that needs a secret breaks the day the secret rotates.
+The image sets `SUMMAREADER_MCP_CONFIG=/config/summareader-mcp.json` and
+`SUMMAREADER_MCP_CACHE=/cache` itself and passes `--host=0.0.0.0`, so the
+mounted paths and the published port work as compose reads them — compose
+passes neither, and the per-platform defaults are not container paths.
 
 If the sync server is another container on the same host, put both on one
 network and use its service name; `host.docker.internal` will not reach a sync
 server that is bound to localhost, which its own compose does on purpose. The
 compose file has the block to uncomment.
+
+### 6. As one executable
+
+```sh
+./scripts/freeze.sh          # dist/summareader-mcp, about 30 MB
+```
+
+PyInstaller, driven by `summareader-mcp.spec`. One file that needs no Python on
+the machine it runs on, which is what a desktop build has to be able to hand
+over, and which serves, searches and paints the terminal interface like any
+other way of starting it. The script builds it and then runs it — `--help`, a
+library created from `schema.sql`, and that same file read back through
+`--library` — because the interesting failure is not at start-up: `schema.sql`
+is a data file, and a bundle that lost it starts perfectly and fails when
+somebody opens a library.
+
+Built on the machine it is built for, one platform at a time. **Only the Linux
+executable has been produced so far**; the macOS and Windows builds have to run
+on macOS and Windows, and until somebody does that they are untested rather
+than merely unbuilt.
+
+### Where it keeps things
+
+With nothing said, the config file and the cache go where the platform puts
+them: `~/.config/summareader-mcp/` and `~/.cache/summareader-mcp/` on Linux
+(`XDG_CONFIG_HOME` and `XDG_CACHE_HOME` are honoured), `~/Library/Application
+Support/summareader-mcp/` and `~/Library/Caches/summareader-mcp/` on macOS, and
+`%APPDATA%`/`%LOCALAPPDATA%` on Windows.
+
+`SUMMAREADER_MCP_CONFIG` and `SUMMAREADER_MCP_CACHE` override both and always
+win — which is how the container keeps `/config` and `/cache`, how the service
+unit points at one person's own directories, and how `scripts/run.sh` points at
+the copy beside this repository.
 
 ## Testing it
 
@@ -254,22 +347,6 @@ what has arrived since rather than re-reading and re-decrypting the whole log.
 It is still only a cache: deleting the volume costs one re-read and no data,
 and anything unreadable in it — corrupt, half-written, or from a newer format
 — is treated as empty rather than as an error.
-
-## As one executable
-
-```sh
-./scripts/freeze.sh          # dist/summareader-mcp, about 30 MB
-```
-
-PyInstaller, driven by `summareader-mcp.spec`. One file that needs no Python on
-the machine it runs on, which is what a desktop build has to be able to hand
-over. The script builds it and then runs it — `--help`, a library created from
-`schema.sql`, and that same file read back through `--library` — because the
-interesting failure is not at start-up: `schema.sql` is a data file, and a
-bundle that lost it starts perfectly and fails when somebody opens a library.
-
-Built on the machine it is built for: this produces a Linux executable, and
-macOS and Windows builds have to run on macOS and Windows.
 
 ## Metrics
 
