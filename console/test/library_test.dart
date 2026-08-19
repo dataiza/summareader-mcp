@@ -119,4 +119,54 @@ void main() {
       ], reason: 'searching for "$query"');
     }
   });
+  test('the same rows as the terminal interface, fields and all', () async {
+    // The other half of the parity, and the reason this was written: the
+    // terminal takes `source:"..." since:7d unread:yes` and the window took
+    // words, so one of them found nothing and neither said why. This asks the
+    // *same functions the terminal calls* — `parse_query` then
+    // `search_library` — rather than the command line, whose flags are a
+    // third spelling of the same question.
+    final python = File('${repositoryRoot.path}/.venv/bin/python');
+    if (!python.existsSync()) {
+      markTestSkipped('no .venv in the repository to ask');
+      return;
+    }
+
+    const script = r'''
+import json, sys
+from summareader_mcp.store import open_store
+from summareader_mcp.tools import parse_query, search_library
+
+store = open_store(sys.argv[1], read_only=True)
+words, filters = parse_query(sys.argv[2])
+found = search_library(store, words, limit=200, **filters)
+print(json.dumps([row["id"] for row in found["items"]]))
+''';
+
+    for (final query in [
+      'source:"Ink & Paper"',
+      'source:Lime unread:yes',
+      'title:sqlite',
+      'since:3650d',
+      'until:2000-01-01',
+      'unread:no',
+      'summarized:yes',
+      'summarized:no',
+      'rust source:Lime',
+      'tag:nothing-has-this',
+    ]) {
+      final done = await Process.run(
+        python.path,
+        ['-c', script, '${temporary.path}/library.sqlite', query],
+        workingDirectory: repositoryRoot.path,
+      );
+      expect(done.exitCode, 0, reason: '${done.stderr}');
+      expect(
+        await ids(query),
+        (jsonDecode(done.stdout as String) as List).cast<String>(),
+        reason: 'searching for "$query"',
+      );
+    }
+  });
+
 }

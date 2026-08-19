@@ -335,16 +335,16 @@ class ConsoleView extends StatelessWidget {
                   selected: state.ownsLibrary,
                   onTap: state.busy
                       ? null
-                      : () => onLibrary?.call(state.libraryPath,
-                          existing: false),
+                      : () =>
+                            onLibrary?.call(state.libraryPath, existing: false),
                 ),
                 Segment(
                   label: 'An existing library',
                   selected: !state.ownsLibrary,
                   onTap: state.busy
                       ? null
-                      : () => onLibrary?.call(state.libraryPath,
-                          existing: true),
+                      : () =>
+                            onLibrary?.call(state.libraryPath, existing: true),
                 ),
               ],
             ),
@@ -354,8 +354,7 @@ class ConsoleView extends StatelessWidget {
               path: state.libraryPath,
               onSubmitted: onLibrary == null || state.busy
                   ? null
-                  : (value) =>
-                      onLibrary!(value, existing: !state.ownsLibrary),
+                  : (value) => onLibrary!(value, existing: !state.ownsLibrary),
             ),
           ],
         ),
@@ -381,10 +380,45 @@ class ConsoleView extends StatelessWidget {
     ]),
   );
 
+  /// What can go in the box, spelled out under it.
+  ///
+  /// Six fields and two shapes of date is more than a placeholder can hold,
+  /// and a query language nobody can see the whole of is one people use two
+  /// fields of. Words with no field search everything; a field narrows.
+  Widget _fields() => Wrap(
+    spacing: Ar.space4,
+    runSpacing: Ar.space1,
+    children: [
+      for (final (name, what) in const [
+        ('source:', 'the feed, as a word starts'),
+        ('title:', 'the title only'),
+        ('tag:', 'a tag on it or on its feed'),
+        ('since: until:', '7d, 3h, 3w, or 2026-08-01'),
+        ('read:', 'when it was read, same shapes'),
+        ('unread: summarized:', 'yes or no'),
+      ])
+        RichText(
+          text: TextSpan(
+            children: [
+              TextSpan(
+                text: '$name ',
+                style: Ar.bodyStyle(12, weight: FontWeight.w600),
+              ),
+              TextSpan(
+                text: what,
+                style: Ar.bodyStyle(12, color: Ar.dim(0.6)),
+              ),
+            ],
+          ),
+        ),
+    ],
+  );
+
   Widget _search(BuildContext context) => _section(
     'Search',
     'Over everything in the mirror — titles, sources, summaries and the '
-        'article text. The same match the command line makes.',
+        'article text. The same words, and the same fields, as the terminal '
+        'interface and the command line.',
     Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -393,7 +427,10 @@ class ConsoleView extends StatelessWidget {
             Expanded(
               child: ArField(
                 controller: query,
-                hint: 'a word, as it starts',
+                // The example is the documentation somebody actually reads.
+                // An empty box that takes a query language and says "a word"
+                // is a box nobody types a field into.
+                hint: 'rust source:"The Morning Paper" since:7d unread:yes',
                 icon: Icons.search_rounded,
                 onSubmitted: onSearch,
               ),
@@ -406,6 +443,8 @@ class ConsoleView extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: Ar.space2),
+        _fields(),
         const SizedBox(height: Ar.space3),
         if (state.results.isEmpty)
           Padding(

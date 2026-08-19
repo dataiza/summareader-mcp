@@ -11,6 +11,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:sqlite3/sqlite3.dart';
 
+import 'query.dart';
+
 /// One row of the results list. Three columns are drawn from it — the date,
 /// the source and the title — and the rest is what a later pane would need.
 class Item {
@@ -97,7 +99,10 @@ class LocalLibrary implements LibrarySource {
   Future<List<Item>> search(String query, {int limit = 200}) async {
     final where = <String>[];
     final args = <Object?>[];
-    final needle = query.trim();
+    // The same box the terminal interface has: words, and the fields around
+    // them. Clause for clause with `Store.search` in store.py, because two
+    // answers to one query is worse than one wrong answer.
+    final (needle, filters) = parseQuery(query);
     if (needle.isNotEmpty) {
       // Cheapest column first: an OR stops at the first branch that says yes,
       // and a title is a line where a body is an article.
@@ -114,6 +119,56 @@ class LocalLibrary implements LibrarySource {
         args.addAll(clauseArgs);
       }
       where.add('(${parts.join(' OR ')})');
+    }
+
+    if (filters.title != null) {
+      final (clause, clauseArgs) = _matches('i.title', filters.title!);
+      where.add(clause);
+      args.addAll(clauseArgs);
+    }
+    if (filters.source != null) {
+      final (clause, clauseArgs) = _matches('src.name', filters.source!);
+      where.add(clause);
+      args.addAll(clauseArgs);
+    }
+    if (filters.since != null) {
+      where.add('coalesce(i.published_at, i.fetched_at) >= ?');
+      args.add(filters.since!.millisecondsSinceEpoch ~/ 1000);
+    }
+    if (filters.until != null) {
+      where.add('coalesce(i.published_at, i.fetched_at) <= ?');
+      args.add(filters.until!.millisecondsSinceEpoch ~/ 1000);
+    }
+    if (filters.readSince != null) {
+      where.add('i.read_at >= ?');
+      args.add(filters.readSince!.millisecondsSinceEpoch ~/ 1000);
+    }
+    if (filters.readUntil != null) {
+      where.add('i.read_at <= ?');
+      args.add(filters.readUntil!.millisecondsSinceEpoch ~/ 1000);
+    }
+    if (filters.unread != null) {
+      where.add('i.read = ?');
+      args.add(filters.unread! ? 0 : 1);
+    }
+    if (filters.summarized != null) {
+      where.add(filters.summarized! ? 's.text IS NOT NULL' : 's.text IS NULL');
+    }
+    // An item's own tag, or a tag on any source it arrived from — the rule the
+    // app filters by, so all three answer alike. Several tags narrow.
+    final wanted = {
+      for (final tag in filters.tags)
+        if (tag.trim().isNotEmpty) tag.trim().toLowerCase(),
+    }.toList()..sort();
+    for (final tag in wanted) {
+      where.add(
+        '(EXISTS (SELECT 1 FROM item_tags it '
+        '          WHERE it.item_id = i.id AND it.tag = ?)'
+        ' OR EXISTS (SELECT 1 FROM item_channels ic '
+        '              JOIN channel_tags ct ON ct.channel_id = ic.channel_id '
+        '             WHERE ic.item_id = i.id AND ct.tag = ?))',
+      );
+      args.addAll([tag, tag]);
     }
 
     final sql =
@@ -285,8 +340,13 @@ class RemoteLibrary implements LibrarySource {
     // The tool caps what it will return at a hundred; asking for more is a
     // number the far end quietly ignores, so the console asks for what it can
     // have rather than showing a limit it does not get.
+    // Parsed here rather than sent whole: the tool takes the fields as
+    // arguments, and a mirror one release older would search for the literal
+    // text "since:7d" if the box were forwarded verbatim.
+    final (needle, filters) = parseQuery(query);
     final payload = await _call('search_library', {
-      'query': query,
+      'query': needle,
+      ...filters.toToolArguments(),
       'limit': limit > 100 ? 100 : limit,
     });
     return [
