@@ -474,6 +474,22 @@ class Supervisor:
         return None if text is None else scrape(text)
 
 
+def stop_on_close(supervisor: Supervisor | None) -> None:
+    """What closing the window does to the server.
+
+    A child this window started dies with it: left running it holds the port
+    and the library with nothing on screen admitting to it, and the next
+    window's Start fails to bind — which reads from there as "Start did
+    nothing", the failure this file is most careful about elsewhere.
+
+    A server systemd owns is emphatically not ours to stop. Outliving the
+    window is the entire point of installing the unit.
+    """
+    if supervisor is None or supervisor.managed:
+        return
+    supervisor.stop()
+
+
 # ---- the window --------------------------------------------------------
 
 
@@ -487,11 +503,19 @@ def run_gui(config: Config, config_file: Path | str, host: str, port: int) -> in
         if config.remote
         else open_store(config.database, read_only=config.reads_a_local_library)
     )
+    window = None
     try:
         root = tk.Tk()
-        Window(root, tk, ttk, config, Path(config_file), store, host, port)
+        window = Window(root, tk, ttk, config, Path(config_file), store, host, port)
         root.mainloop()
     finally:
+        # A child this window started dies with it. Left running it would hold
+        # the port and the library with nothing on screen saying so, and the
+        # next window's Start would fail to bind — which reads from there as
+        # "Start did nothing", the one failure this file is most careful about
+        # elsewhere. A server systemd owns is emphatically not ours to stop:
+        # the whole point of installing the unit is that it outlives the window.
+        stop_on_close(getattr(window, "supervisor", None))
         store.close()
     return 0
 

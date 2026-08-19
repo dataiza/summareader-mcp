@@ -286,3 +286,36 @@ def test_searching_an_empty_library_says_so_rather_than_hanging(window):
     window._show_results([])
     assert window.message.cget("text") == "0 matching"
     assert window.results.get_children() == ()
+
+
+class TestClosingTheWindow:
+    def test_a_child_started_here_dies_here(self):
+        # Otherwise it holds the port and the library after the window is
+        # gone, and the next Start fails to bind.
+        class Child:
+            managed = False
+            stopped = False
+
+            def stop(self):
+                self.stopped = True
+
+        child = Child()
+        gui.stop_on_close(child)
+        assert child.stopped
+
+    def test_a_service_is_left_alone(self):
+        # Outliving the window is the whole reason somebody installed a unit.
+        class Service:
+            managed = True
+            stopped = False
+
+            def stop(self):
+                self.stopped = True
+
+        service = Service()
+        gui.stop_on_close(service)
+        assert not service.stopped
+
+    def test_a_window_with_nothing_to_supervise_closes_quietly(self):
+        # --remote and --library never build one.
+        gui.stop_on_close(None)
