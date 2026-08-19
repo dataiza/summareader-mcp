@@ -62,6 +62,25 @@ def _word_start(haystack: str | None, needle: str) -> int:
     return 1 if haystack and _needle(needle).search(haystack) else 0
 
 
+def _matches(column: str, needle: str) -> tuple[str, list[str]]:
+    """A word-start match on one column, with a cheap LIKE ahead of it.
+
+    `word_start` is a Python function, so SQLite calls back into the
+    interpreter once per row per column — over whole summaries and article
+    bodies, that call *is* the search, and no index can help a function. LIKE
+    is strictly wider than a word-start match and runs in C, so asking it
+    first leaves the callback only the rows already holding the needle.
+
+    ponytail: LIKE folds case over ASCII only, so a non-ASCII needle skips the
+    prefilter rather than quietly losing matches. FTS5 is the upgrade path if
+    the fast path stops being fast.
+    """
+    if not needle.isascii():
+        return f"word_start({column}, ?)", [needle]
+    like = "%" + re.sub(r"([\\%_])", r"\\\1", needle) + "%"
+    return f"({column} LIKE ? ESCAPE '\\' AND word_start({column}, ?))", [like, needle]
+
+
 def open_store(path: Path | str, *, read_only: bool = False) -> Store:
     """Open a library, creating the mirror's schema unless it is somebody's.
 
@@ -193,20 +212,23 @@ class Store:
 
         if query.strip():
             needle = query.strip()
-            where.append(
-                "(word_start(i.title, ?)"
-                " OR word_start(src.name, ?)"
-                " OR word_start(s.text, ?)"
-                " OR word_start(t.text, ?)"
-                " OR word_start(i.canonical_url, ?))"
-            )
-            args += [needle] * 5
+            # Cheapest column first: an OR stops at the first branch that says
+            # yes, and a title is a line where a body is an article.
+            parts = []
+            for column in ("i.title", "src.name", "i.canonical_url",
+                           "s.text", "t.text"):
+                clause, clause_args = _matches(column, needle)
+                parts.append(clause)
+                args += clause_args
+            where.append("(" + " OR ".join(parts) + ")")
         if title:
-            where.append("word_start(i.title, ?)")
-            args.append(title)
+            clause, clause_args = _matches("i.title", title)
+            where.append(clause)
+            args += clause_args
         if source:
-            where.append("word_start(src.name, ?)")
-            args.append(source)
+            clause, clause_args = _matches("src.name", source)
+            where.append(clause)
+            args += clause_args
         if since is not None:
             where.append("coalesce(i.published_at, i.fetched_at) >= ?")
             args.append(int(since.timestamp()))

@@ -181,6 +181,23 @@ class TestSearching:
         )
         assert sorted(i.id for i in filled.search("rust")) == ["rust", "rustc"]
 
+    def test_the_like_prefilter_does_not_change_what_matches(self, filled):
+        # The LIKE ahead of `word_start` is an optimization, so a needle
+        # carrying LIKE's own wildcards must stay a literal, and a needle
+        # LIKE cannot case-fold must skip the prefilter rather than miss.
+        filled.apply_all(
+            [
+                item(id="pct", title="Up 50% since Tuesday"),
+                item(id="under", title="The snake_case argument"),
+                item(id="cafe", title="Café notes"),
+            ]
+        )
+        assert [i.id for i in filled.search("50%")] == ["pct"]
+        assert filled.search("50x") == []
+        assert [i.id for i in filled.search("snake_case")] == ["under"]
+        assert filled.search("snakexcase") == []
+        assert [i.id for i in filled.search("café")] == ["cafe"]
+
     def test_by_source(self, filled):
         assert [i.id for i in filled.search("boat channel")] == ["boat"]
 
