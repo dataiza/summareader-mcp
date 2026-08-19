@@ -136,7 +136,7 @@ class ConsoleView extends StatelessWidget {
   // ---- the pieces ------------------------------------------------------
 
   Widget _header() {
-    const title = 'SummaReader mirror';
+    const title = 'SummaReader MCP';
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -144,7 +144,7 @@ class ConsoleView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Eyebrow('MCP mirror'),
+              const Eyebrow('Model Context Protocol'),
               const SizedBox(height: Ar.space1),
               Text(title, style: Ar.headingStyle(28, forText: title)),
               const SizedBox(height: Ar.space1),
@@ -239,8 +239,12 @@ class ConsoleView extends StatelessWidget {
             icon: state.running ? Icons.stop_rounded : Icons.play_arrow_rounded,
             onTap: state.local && !state.busy ? onToggle : null,
           ),
+          // "Sync now", not "Pull now", though pulling is all it does. The
+          // app's button says Sync now and this is the same errand from the
+          // other end; two words for one action is a difference somebody has
+          // to learn for nothing.
           PillButton(
-            label: 'Pull now',
+            label: 'Sync now',
             icon: Icons.sync_rounded,
             height: 40,
             onTap: state.local && !state.busy ? onPull : null,

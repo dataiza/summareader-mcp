@@ -72,7 +72,7 @@ class ConsoleApp extends StatelessWidget {
     // would leave every widget drawing in whichever was constructed last.
     final brightness = MediaQuery.platformBrightnessOf(context);
     return MaterialApp(
-      title: 'SummaReader mirror',
+      title: 'SummaReader MCP',
       debugShowCheckedModeBanner: false,
       theme: Ar.themeData(brightness),
       home: ConsoleScreen(options: options),

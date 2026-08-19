@@ -103,7 +103,7 @@ String renderUnit({
 }) =>
     '''
 [Unit]
-# Written by the SummaReader mirror's console. Turning off "Start at login"
+# Written by the SummaReader MCP console. Turning off "Start at login"
 # there removes this file again.
 Description=SummaReader MCP server
 Documentation=https://github.com/dataiza/summareader-mcp
