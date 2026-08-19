@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show FontLoader;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:summareader_ui/summareader_ui.dart';
+import 'package:summareader_mcp_console/src/addresses.dart';
 import 'package:summareader_mcp_console/src/console.dart';
 import 'package:summareader_mcp_console/src/library.dart';
 import 'package:summareader_mcp_console/src/mirror.dart';
@@ -100,9 +101,18 @@ void main() {
         ('Bearer token', 'set'),
       ],
       results: found.take(4).toList(),
+      // A made-up interface list, for the same reason the paths above are
+      // made up: the picture is of the program, not of the machine that
+      // happened to render it.
+      host: '127.0.0.1',
+      port: 8100,
+      hosts: bindHosts('127.0.0.1', const [
+        LanAddr('192.168.1.24', 'wlan0'),
+        LanAddr('172.17.0.1', 'docker0'),
+      ]),
     );
 
-    tester.view.physicalSize = const Size(1060, 1180);
+    tester.view.physicalSize = const Size(1060, 1460);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 

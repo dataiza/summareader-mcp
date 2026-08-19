@@ -12,6 +12,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:summareader_ui/summareader_ui.dart';
 
+import 'addresses.dart';
 import 'library.dart';
 
 /// Everything drawn, at one moment.
@@ -21,6 +22,9 @@ class ConsoleState {
     required this.running,
     required this.stats,
     required this.configRows,
+    this.host = '127.0.0.1',
+    this.port = 8100,
+    this.hosts = const [],
     this.note,
     this.results = const [],
     this.local = true,
@@ -36,6 +40,12 @@ class ConsoleState {
   /// Why half of this is off, when it is. A sentence rather than a greyed-out
   /// button with no explanation beside it.
   final String? note;
+
+  /// Where the server listens, and what the chooser offers instead — already
+  /// ordered, so the view has no opinion about which interface matters.
+  final String host;
+  final int port;
+  final List<LanAddr> hosts;
   final List<(String, String)> stats;
   final List<(String, String)> configRows;
   final List<Item> results;
@@ -60,20 +70,25 @@ class ConsoleView extends StatelessWidget {
     super.key,
     required this.state,
     required this.query,
-    this.onStart,
-    this.onStop,
+    this.onToggle,
     this.onPull,
     this.onSearch,
     this.onAtLogin,
+    this.onBind,
+    this.onPort,
   });
 
   final ConsoleState state;
   final TextEditingController query;
-  final VoidCallback? onStart;
-  final VoidCallback? onStop;
+
+  /// One button: Start when it is stopped, Stop when it is running. Which of
+  /// the two it does is the state's business, not the caller's.
+  final VoidCallback? onToggle;
   final VoidCallback? onPull;
   final ValueChanged<String>? onSearch;
   final ValueChanged<bool>? onAtLogin;
+  final ValueChanged<String>? onBind;
+  final ValueChanged<String>? onPort;
 
   @override
   Widget build(BuildContext context) {
@@ -104,6 +119,7 @@ class ConsoleView extends StatelessWidget {
                     const SizedBox(height: Ar.space6),
                     _library(),
                     _server(),
+                    if (state.local) _address(),
                     _configuration(),
                     _search(context),
                   ],
@@ -214,16 +230,14 @@ class ConsoleView extends StatelessWidget {
         runSpacing: Ar.space2,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
+          // One button rather than two: with a Start and a Stop side by side
+          // one of them is always dead, for no reason a reader can see. The
+          // label says what pressing it will do — including when a unit owns
+          // the server and it is systemctl doing it.
           PrimaryButton(
-            label: 'Start',
-            icon: Icons.play_arrow_rounded,
-            onTap: state.local && !state.busy ? onStart : null,
-          ),
-          PillButton(
-            label: 'Stop',
-            icon: Icons.stop_rounded,
-            height: 40,
-            onTap: state.local && !state.busy ? onStop : null,
+            label: state.running ? 'Stop' : 'Start',
+            icon: state.running ? Icons.stop_rounded : Icons.play_arrow_rounded,
+            onTap: state.local && !state.busy ? onToggle : null,
           ),
           PillButton(
             label: 'Pull now',
@@ -245,6 +259,44 @@ class ConsoleView extends StatelessWidget {
               'Writes a user service, so the mirror comes back after a '
               'reboot and outlives this window.',
         ),
+    ]),
+  );
+
+  Widget _address() => _section(
+    'Address',
+    'Where the mirror listens. Changing either restarts it — a listening '
+        'socket cannot be moved — and rewrites the unit when there is one.',
+    _card([
+      _row(
+        'Bind address',
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          alignment: WrapAlignment.end,
+          children: [
+            for (final candidate in state.hosts)
+              Segment(
+                label: candidate.toString(),
+                selected: candidate.ip == state.host,
+                onTap: onBind == null || state.busy
+                    ? null
+                    : () => onBind!(candidate.ip),
+              ),
+          ],
+        ),
+        hint:
+            'Loopback and 0.0.0.0 are the two decisions; the rest are '
+            'addresses this machine answers on. Anything wider than loopback '
+            'needs a bearer token — this port serves the whole library in '
+            'plaintext.',
+      ),
+      _row(
+        'Port',
+        SizedBox(
+          width: 110,
+          child: _PortField(port: '${state.port}', onSubmitted: onPort),
+        ),
+      ),
     ]),
   );
 
@@ -397,6 +449,37 @@ class ConsoleView extends StatelessWidget {
         child: Align(alignment: Alignment.centerRight, child: control),
       ),
     ],
+  );
+}
+
+/// The port, in a field that keeps its own text.
+///
+/// Its own widget because a controller rebuilt on every poll loses the caret
+/// twice a second, which is a field nobody can type four digits into.
+class _PortField extends StatefulWidget {
+  const _PortField({required this.port, this.onSubmitted});
+
+  final String port;
+  final ValueChanged<String>? onSubmitted;
+
+  @override
+  State<_PortField> createState() => _PortFieldState();
+}
+
+class _PortFieldState extends State<_PortField> {
+  late final _controller = TextEditingController(text: widget.port);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => ArField(
+    controller: _controller,
+    background: Ar.neutral100,
+    onSubmitted: widget.onSubmitted,
   );
 }
 

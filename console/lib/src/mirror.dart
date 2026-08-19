@@ -173,14 +173,19 @@ Future<void> systemctl(List<String> args) async {
 /// console has to reach the unit too, or the service comes back on the old
 /// one.
 Future<void> installService(
-  String unit, [
+  String unit, {
   Map<String, String>? environment,
-]) async {
+  Future<void> Function(List<String>)? manager,
+}) async {
   final file = File(unitPath(environment));
   await file.parent.create(recursive: true);
   await file.writeAsString(unit);
-  await systemctl(['daemon-reload']);
-  await systemctl(['enable', '--now', unitName]);
+  // Defaults to the real user manager, and is replaceable so a test can ask
+  // what a rebind leaves on disk without enabling a service on somebody's
+  // desktop.
+  final run = manager ?? systemctl;
+  await run(['daemon-reload']);
+  await run(['enable', '--now', unitName]);
 }
 
 Future<void> uninstallService([Map<String, String>? environment]) async {

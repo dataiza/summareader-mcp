@@ -49,6 +49,7 @@ import 'dart:ui' show AppExitResponse;
 import 'package:flutter/material.dart';
 import 'package:summareader_ui/summareader_ui.dart';
 
+import 'src/addresses.dart';
 import 'src/config.dart';
 import 'src/console.dart';
 import 'src/library.dart';
@@ -103,6 +104,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   final _ownPulls = OwnPulls();
 
   List<Item> _results = const [];
+  List<LanAddr> _lan = const [];
   Map<String, int> _counts = const {};
   String? _cursor;
   Scraped? _scraped;
@@ -191,12 +193,16 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     final library = _library;
     final supervisor = _supervisor;
     final counts = await _quietly(() => library?.counts());
+    // Cheap, and an interface that came up since the window opened is one
+    // somebody may well be trying to bind to right now.
+    final lan = supervisor == null ? const <LanAddr>[] : await lanAddrs();
     final cursor = await _quietly(() => library?.setting('sync.cursor'));
     final scraped = supervisor == null ? null : await supervisor.scraped();
     final healthy = supervisor == null ? false : await supervisor.healthy();
     if (!mounted) return;
     setState(() {
       _counts = counts ?? const {};
+      _lan = lan;
       _cursor = cursor;
       // The server's own numbers while it is up, ours while it is not, so a
       // pull done from this window still shows.
@@ -233,15 +239,73 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     }
   }
 
-  Future<void> _start() => _act('starting', () async {
-    await _supervisor!.start();
+  /// One button, so what it does depends on what is running.
+  ///
+  /// `_act` holds _busy for the length of this, which is the guard against the
+  /// second click that lands while the first start is still in flight — two
+  /// servers on one library, the second failing to bind.
+  Future<void> _toggle() => _act(_running ? 'stopping' : 'starting', () async {
+    final supervisor = _supervisor!;
+    if (_running) {
+      await supervisor.stop();
+      return 'stopped';
+    }
+    // Before anything is started, not after: a server already listening on a
+    // wide address with no token is the thing being prevented.
+    final refused = _refusal(supervisor.host);
+    if (refused != null) return refused;
+    await supervisor.start();
     return 'started';
   });
 
-  Future<void> _stop() => _act('stopping', () async {
-    await _supervisor!.stop();
-    return 'stopped';
+  /// Why this address is refused, or null. See [bindRefusal]: this port serves
+  /// the whole library in plaintext, so anything wider than loopback needs the
+  /// bearer token that guards it.
+  String? _refusal(String host) => bindRefusal(
+    host,
+    hasToken: _config.bearerToken != null,
+    configFile: _config.file,
+  );
+
+  /// Rebinding is a restart, because a listening socket cannot be moved. The
+  /// unit is rewritten too when there is one — otherwise the address changes
+  /// in this window and comes back the old one at the next login, with nothing
+  /// said.
+  Future<void> _rebind(String host, int port) => _act('rebinding', () async {
+    final supervisor = _supervisor!;
+    if (host == supervisor.host && port == supervisor.port) return '';
+    final refused = _refusal(host);
+    if (refused != null) return refused;
+
+    final wasRunning = await supervisor.running();
+    await supervisor.stop();
+    supervisor.host = host;
+    supervisor.port = port;
+    if (serviceInstalled()) {
+      await installService(
+        renderUnit(
+          host: host,
+          port: port,
+          configFile: _config.file,
+          cacheDir: _config.cacheDir,
+        ),
+      );
+    } else if (wasRunning) {
+      await supervisor.start();
+    }
+    return 'listening on ${supervisor.url}';
   });
+
+  /// A port that is not a port is a server that will not start, and the field
+  /// is the only place to say so.
+  void _setPort(String typed) {
+    final port = int.tryParse(typed.trim());
+    if (port == null || port < 1 || port > 65535) {
+      _fading.say('$typed is not a port number.');
+      return;
+    }
+    unawaited(_rebind(_supervisor!.host, port));
+  }
 
   Future<void> _pull() => _act('pulling', () async {
     try {
@@ -310,6 +374,11 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           incomplete: _config.missing,
         ),
         stats: formatStats(_counts, _cursor, _scraped),
+        host: _supervisor?.host ?? widget.options.host,
+        port: _supervisor?.port ?? widget.options.port,
+        hosts: _supervisor == null
+            ? const []
+            : bindHosts(_supervisor!.host, _lan),
         configRows: _configRows(),
         results: _results,
         local: _local,
@@ -321,11 +390,12 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         busy: _busy,
       ),
       query: _query,
-      onStart: _start,
-      onStop: _stop,
+      onToggle: _toggle,
       onPull: _pull,
       onSearch: _search,
       onAtLogin: _setAtLogin,
+      onBind: (host) => unawaited(_rebind(host, _supervisor!.port)),
+      onPort: _setPort,
     );
   }
 

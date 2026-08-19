@@ -16,9 +16,9 @@ import 'package:summareader_mcp_console/src/mirror.dart';
 Future<void> draw(
   WidgetTester tester,
   ConsoleState state, {
-  VoidCallback? onStart,
+  VoidCallback? onToggle,
 }) async {
-  tester.view.physicalSize = const Size(1100, 900);
+  tester.view.physicalSize = const Size(1100, 1200);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
@@ -27,7 +27,7 @@ Future<void> draw(
       home: ConsoleView(
         state: state,
         query: TextEditingController(),
-        onStart: onStart,
+        onToggle: onToggle,
       ),
     ),
   );
@@ -50,7 +50,7 @@ void main() {
     await draw(
       tester,
       reading(refusal(remote: 'http://box:8100')),
-      onStart: () => started = true,
+      onToggle: () => started = true,
     );
 
     expect(find.textContaining('http://box:8100'), findsWidgets);

@@ -7,7 +7,10 @@
 /// rather than by installing one and hoping.
 library;
 
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:summareader_mcp_console/src/addresses.dart';
 import 'package:summareader_mcp_console/src/mirror.dart';
 
 const exe = ['/home/you/.local/bin/summareader-mcp'];
@@ -224,6 +227,116 @@ void main() {
     expect(reachable('::', 8100), 'http://127.0.0.1:8100');
     expect(reachable('192.168.1.24', 8100), 'http://192.168.1.24:8100');
     expect(reachable('::1', 8100), 'http://[::1]:8100');
+  });
+
+  // A desktop with Docker or a VM manager on it holds several private
+  // addresses and only some of them lead anywhere. Ordered against a
+  // written-down list rather than against whatever this machine happens to
+  // have plugged in, which is a different list on every machine.
+  test('the virtual interfaces are offered last', () {
+    final ordered = orderLanAddrs(const [
+      LanAddr('172.18.0.1', 'br-27ee9d724738'),
+      LanAddr('172.17.0.1', 'docker0'),
+      LanAddr('10.10.20.1', 'enp7s0'),
+      LanAddr('192.168.122.1', 'virbr0'),
+      LanAddr('192.168.1.24', 'wlan0'),
+      LanAddr('172.20.0.2', 'veth7f21a3c'),
+    ]);
+
+    expect(ordered.map((a) => a.iface), [
+      'enp7s0',
+      'wlan0',
+      'br-27ee9d724738',
+      'docker0',
+      'virbr0',
+      'veth7f21a3c',
+    ]);
+
+    // The address is what gets bound; the interface is only how the person
+    // reading the chooser tells one 172.x from another.
+    expect(ordered.first.toString(), '10.10.20.1 (enp7s0)');
+    expect(const LanAddr('0.0.0.0').toString(), '0.0.0.0');
+    expect(privateV4(InternetAddress('172.31.255.1')), isTrue);
+    expect(privateV4(InternetAddress('172.32.0.1')), isFalse);
+  });
+
+  // Loopback and everything are decisions rather than addresses, so they are
+  // offered even though no interface answers to them — and an address already
+  // in use survives the list not containing it.
+  test('the chooser offers both decisions first', () {
+    const lan = [LanAddr('192.168.1.24', 'wlan0')];
+
+    expect(bindHosts('127.0.0.1', lan).map((h) => h.ip), [
+      '127.0.0.1',
+      '0.0.0.0',
+      '192.168.1.24',
+    ]);
+    // A hostname, or an address on an interface that is down: kept, rather
+    // than silently rebinding a running server to something else.
+    expect(bindHosts('mirror.local', lan).first.ip, 'mirror.local');
+    expect(bindHosts('mirror.local', lan).length, 4);
+  });
+
+  // The one rule in this console that is not in the sync server's: this port
+  // answers with the whole library in plaintext, and the only credential is
+  // the bearer token. scripts/install.sh refuses the same choice.
+  test('a wider bind is refused until there is a bearer token', () {
+    final refused = bindRefusal(
+      '0.0.0.0',
+      hasToken: false,
+      configFile: '/home/you/.config/summareader-mcp/summareader-mcp.json',
+    );
+    expect(refused, contains('plaintext'));
+    // What to do about it, not merely that it is refused.
+    expect(refused, contains('openssl rand -base64 32'));
+    expect(refused, contains('summareader-mcp.json'));
+
+    expect(bindRefusal('192.168.1.24', hasToken: false), isNotNull);
+    expect(bindRefusal('0.0.0.0', hasToken: true), isNull);
+
+    // One machine talking to itself is its own business, token or not.
+    for (final host in ['127.0.0.1', '::1', 'localhost']) {
+      expect(bindRefusal(host, hasToken: false), isNull);
+      expect(bindRefusal(host, hasToken: true), isNull);
+    }
+  });
+
+  // Changing the address in the window has to reach the unit, or the mirror
+  // comes back on the old address at the next login with nothing said.
+  test('a rebind rewrites an installed unit', () async {
+    final temporary = Directory.systemTemp.createTempSync('unit');
+    addTearDown(() => temporary.deleteSync(recursive: true));
+    final environment = {'XDG_CONFIG_HOME': temporary.path};
+    final asked = <List<String>>[];
+
+    String unitFor(String host, int port) => renderUnit(
+      host: host,
+      port: port,
+      configFile: '/home/you/.config/summareader-mcp/summareader-mcp.json',
+      cacheDir: '/home/you/.cache/summareader-mcp',
+      exe: exe,
+    );
+
+    await installService(
+      unitFor('127.0.0.1', 8100),
+      environment: environment,
+      manager: (args) async => asked.add(args),
+    );
+    expect(serviceInstalled(environment), isTrue);
+
+    await installService(
+      unitFor('0.0.0.0', 8200),
+      environment: environment,
+      manager: (args) async => asked.add(args),
+    );
+
+    // Written over rather than left beside: the address on disk is the one
+    // that was chosen, and the console reads it back on the next launch.
+    final written = File(unitPath(environment)).readAsStringSync();
+    expect(unitBind(written), ('0.0.0.0', 8200));
+    expect(written, isNot(contains('8100')));
+    // And systemd is told, or it keeps running the unit it already parsed.
+    expect(asked.where((a) => a.first == 'daemon-reload'), hasLength(2));
   });
 
   test('the mirror is found by the environment before anything else', () {
