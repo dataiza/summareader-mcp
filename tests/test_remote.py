@@ -78,7 +78,7 @@ def served(tmp_path: Path, request):
         master_key=b"",
         cache_dir=tmp_path,
         library=path,
-        http_token=token,
+        bearer_token=token,
     )
     thread = threading.Thread(
         target=server_module.serve,

@@ -47,9 +47,9 @@ def serve(
     store = open_store(config.database, read_only=config.reads_a_local_library)
     metrics = Metrics()
 
-    if transport == "http" and not config.http_token:
+    if transport == "http" and not config.bearer_token:
         log.warning(
-            "no http_token — this port serves the whole library in plaintext to "
+            "no bearer_token — this port serves the whole library in plaintext to "
             "anything that can reach it. Set one, or bind it somewhere private."
         )
 
@@ -84,12 +84,12 @@ def serve(
         # nothing — so it passes --host=0.0.0.0, and its boundary stays the
         # published port and the token. See the Dockerfile.
         # Built rather than run, because `run` gives nowhere to put the token
-        # check and the tools had none: `http_token` guarded /metrics alone,
+        # check and the tools had none: `bearer_token` guarded /metrics alone,
         # so the whole library answered anyone who could reach this port. The
         # app is the same one `run` would have built.
         app = server.streamable_http_app(host=host)
-        if config.http_token:
-            app = _guarded(app, config.http_token)
+        if config.bearer_token:
+            app = _guarded(app, config.bearer_token)
         _run_http(app, host, port)
     else:
         server.run(transport="stdio")
@@ -221,10 +221,10 @@ def _authorised(request: Request, config: Config) -> bool:
     master key and a plaintext copy of the library, so anything that can reach
     the port and pass the first check can already ask it for the articles.
     """
-    if not config.http_token:
+    if not config.bearer_token:
         return True
     header = request.headers.get("authorization", "")
-    return _matches(header, config.http_token)
+    return _matches(header, config.bearer_token)
 
 
 def _matches(header: str, token: str) -> bool:

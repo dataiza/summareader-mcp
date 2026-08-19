@@ -90,6 +90,35 @@ class TestTheName:
         assert config.name == "Reports box"
 
 
+class TestTheBearerToken:
+    def test_from_the_file(self, tmp_path):
+        config = Config.load(file=write(tmp_path, bearer_token="s3cret"),
+                             environment={})
+        assert config.bearer_token == "s3cret"
+
+    def test_the_name_it_had_before_the_rename_still_works(self, tmp_path):
+        # `http_token` is on disk in config files nobody is going to edit
+        # today, and it guards the port: reading only the new spelling would
+        # open the library to anyone who could reach it.
+        config = Config.load(file=write(tmp_path, http_token="s3cret"),
+                             environment={})
+        assert config.bearer_token == "s3cret"
+
+    def test_the_new_name_wins_when_both_are_there(self, tmp_path):
+        config = Config.load(
+            file=write(tmp_path, bearer_token="new", http_token="old"),
+            environment={},
+        )
+        assert config.bearer_token == "new"
+
+    def test_the_environment_wins_over_either(self, tmp_path):
+        config = Config.load(
+            file=write(tmp_path, http_token="old"),
+            environment={"SUMMAREADER_MCP_TOKEN": "from-the-environment"},
+        )
+        assert config.bearer_token == "from-the-environment"
+
+
 class TestReadingALibraryDirectly:
     def test_needs_no_server_no_token_and_no_key(self, tmp_path):
         # The whole configuration when this runs on the same machine as the app.

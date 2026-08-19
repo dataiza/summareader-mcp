@@ -66,7 +66,10 @@ class Config:
     master_key: bytes
     cache_dir: Path
     name: str | None = None
-    http_token: str | None = None
+    #: The credential a caller must present to the http transport, as
+    #: `Authorization: Bearer …`. Spelled `http_token` in config files written
+    #: before the rename, and still read under that name.
+    bearer_token: str | None = None
     fetch_bodies: bool = True
     library: Path | None = None
     #: A mirror's address, when this process reads one over the port instead of
@@ -98,7 +101,7 @@ class Config:
 
         No sync server, no device token and no master key, because nothing here
         decrypts anything — the mirror on the other end did that, and holding
-        the plaintext is the whole of what it is for. `http_token` is the only
+        the plaintext is the whole of what it is for. `bearer_token` is the only
         credential a reader needs, and it is the same one the server checks.
         """
         return cls(
@@ -106,7 +109,7 @@ class Config:
             token="",
             master_key=b"",
             cache_dir=Path(),
-            http_token=token,
+            bearer_token=token,
             remote=url,
         )
 
@@ -171,7 +174,14 @@ class Config:
                 or default_cache_dir(environment=env)
             ),
             name=pick("name", "SUMMAREADER_MCP_NAME"),
-            http_token=pick("http_token", "SUMMAREADER_MCP_TOKEN"),
+            # `http_token` was the old spelling, and config files holding it
+            # are on disk on machines nobody is going to edit today. Read
+            # rather than migrated: rewriting somebody's config to rename a key
+            # is a bigger liberty than reading two names.
+            bearer_token=(
+                pick("bearer_token", "SUMMAREADER_MCP_TOKEN")
+                or pick("http_token", "SUMMAREADER_MCP_TOKEN")
+            ),
             fetch_bodies=(pick("fetch_bodies", "SUMMAREADER_MCP_BODIES", "true") or "")
             .lower()
             not in ("false", "0", "no"),

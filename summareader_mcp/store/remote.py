@@ -251,9 +251,9 @@ def _explain(error: BaseException, token: str | None) -> str:
     text = str(leaf) or leaf.__class__.__name__
     if isinstance(leaf, MCPError):
         text += (
-            " — check SUMMAREADER_MCP_TOKEN against the mirror's http_token"
+            " — check SUMMAREADER_MCP_TOKEN against the mirror's bearer_token"
             if token
-            else " — if the mirror sets http_token, put it in SUMMAREADER_MCP_TOKEN"
+            else " — if the mirror sets bearer_token, put it in SUMMAREADER_MCP_TOKEN"
         )
     return text
 

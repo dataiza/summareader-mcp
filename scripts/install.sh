@@ -90,8 +90,10 @@ if [ ! -f "$config" ]; then
   exit 1
 fi
 
-has_http_token() {
-  grep -q '"http_token"[[:space:]]*:[[:space:]]*"[^"]\+"' "$config"
+has_bearer_token() {
+  # Either spelling: `http_token` is what older configs call it, and the
+  # server still reads them.
+  grep -qE '"(bearer|http)_token"[[:space:]]*:[[:space:]]*"[^"]+"' "$config"
 }
 
 # Loopback is one machine's business. Anything wider publishes the whole
@@ -101,8 +103,8 @@ has_http_token() {
 case "$host" in
   127.0.0.1|::1|localhost) ;;
   *)
-    has_http_token || {
-      echo "Refusing to bind $host without an http_token in $config." >&2
+    has_bearer_token || {
+      echo "Refusing to bind $host without a bearer_token in $config." >&2
       echo "  That address serves the entire library, in plaintext, to anyone" >&2
       echo "  who can reach it. Set one and install again:" >&2
       echo "    openssl rand -base64 32" >&2
@@ -140,8 +142,8 @@ echo
 # The port serves the whole library in plaintext to anyone who can reach it.
 # The server says so at startup too; saying it here means it is read before
 # the thing is running rather than after.
-if ! has_http_token; then
-  echo "WARNING: no http_token in $config — anything that can reach the port"
+if ! has_bearer_token; then
+  echo "WARNING: no bearer_token in $config — anything that can reach the port"
   echo "         can read the entire library. Set one:"
   echo "           openssl rand -base64 32"
   echo

@@ -13,7 +13,7 @@ Wants=network-online.target
 # The address is filled in too, and is 127.0.0.1 unless HOST said otherwise:
 # this is a user service for a client on the same machine. A wider one is for a
 # machine somebody else's client reaches, and install.sh refuses it without an
-# http_token rather than serving the library to the network.
+# bearer_token rather than serving the library to the network.
 ExecStart=@BIN@ serve --transport=http --host=@HOST@ --port=@PORT@
 Environment=SUMMAREADER_MCP_CONFIG=@CONFIG@
 Environment=SUMMAREADER_MCP_CACHE=@CACHE@

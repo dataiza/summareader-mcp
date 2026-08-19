@@ -76,7 +76,7 @@ def test_an_http_port_with_no_token_is_warned_about(started, tmp_path, caplog):
     # That port serves the whole library in plaintext.
     with caplog.at_level("WARNING"):
         server_module.serve(Config.for_library(tmp_path / "l.sqlite"), transport="http")
-    assert any("http_token" in r.message for r in caplog.records)
+    assert any("bearer_token" in r.message for r in caplog.records)
 
 
 def test_reading_a_local_library_does_not_start_syncing(started, tmp_path, caplog):
@@ -144,7 +144,7 @@ class TestTheSyncLoop:
 
 
 class TestTheTokenGuardsTheTools:
-    """`http_token` guarded /metrics and nothing else.
+    """`bearer_token` guarded /metrics and nothing else.
 
     Which meant the MCP endpoint — every tool, the whole library — answered
     anyone who could reach the port, while the installer and the README both

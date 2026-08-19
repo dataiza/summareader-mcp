@@ -23,7 +23,7 @@ services:
       # Localhost only, and not negotiable without thinking hard first. This
       # process holds the master key, so anything that can reach the port and
       # pass its check can read the entire library in plaintext — and with no
-      # `http_token` in the config there is no check to pass.
+      # `bearer_token` in the config there is no check to pass.
       # The encryption ends here — that is what this server is for, and why
       # it needs a boundary of its own.
       - "127.0.0.1:8100:8100"

@@ -118,7 +118,7 @@ The other direction: the library stays on the box allowed to hold it, and a
 terminal anywhere else reads it over that box's HTTP transport.
 
 ```sh
-export SUMMAREADER_MCP_TOKEN=…                 # the mirror's http_token
+export SUMMAREADER_MCP_TOKEN=…                 # the mirror's bearer_token
 summareader-mcp --remote http://box:8100 search "borrow checker"
 summareader-mcp --remote http://box:8100 ui
 ```
@@ -204,7 +204,8 @@ loopback is reachable by nothing and the port is published by the runtime — so
 the container passes `--host=0.0.0.0` and a desktop does not, because there the
 same address is a firewall prompt nobody asked for.
 
-Set `http_token` in the config and callers must present it as a bearer token.
+Set `bearer_token` in the config and callers must present it as a bearer token.
+(It was `http_token` before, and configs written with that name still work.)
 Without one the port is open to anyone who can reach it, and the server says so
 at startup — the encryption ends at this process, which is what it is for and
 why it needs a boundary of its own. `/health` never needs the token: it reports
@@ -317,7 +318,7 @@ serves an entire library in plaintext to the network, with the token optional,
 is not something anybody decided on purpose.
 
 The installer refuses to start without a config, and **refuses a `HOST` wider
-than loopback while `http_token` is unset** — that address serves the whole
+than loopback while `bearer_token` is unset** — that address serves the whole
 library in plaintext to anything that can route to it. On loopback the same
 missing token is a warning rather than a refusal. The Docker path installs no unit: `restart: unless-stopped` and
 an enabled `docker.service` already restart the container after a reboot.
