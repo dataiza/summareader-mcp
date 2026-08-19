@@ -72,6 +72,42 @@ def test_a_container_can_still_bind_every_interface(started, tmp_path):
     assert started[0]["host"] == "0.0.0.0"
 
 
+class TestWhereTheAddressComesFrom:
+    """Flag, environment, file, default — in that order.
+
+    The console writes the file's half, so a config that loses to an argparse
+    default nobody typed would be a window whose Address chooser did nothing.
+    """
+
+    def _config(self, tmp_path, **fields) -> Path:
+        import json
+
+        path = tmp_path / "config.json"
+        path.write_text(
+            json.dumps({"library": str(tmp_path / "l.sqlite"), **fields}),
+            encoding="utf-8",
+        )
+        return path
+
+    def test_the_file_when_no_flag_says_otherwise(self, started, tmp_path):
+        from summareader_mcp.cli import main
+
+        main([
+            "--config", str(self._config(tmp_path, host="0.0.0.0", port=9000)),
+            "serve", "--transport=http",
+        ])
+        assert started[0]["host"] == "0.0.0.0" and started[0]["port"] == 9000
+
+    def test_the_flag_wins_over_the_file(self, started, tmp_path):
+        from summareader_mcp.cli import main
+
+        main([
+            "--config", str(self._config(tmp_path, host="0.0.0.0", port=9000)),
+            "serve", "--transport=http", "--host=127.0.0.1", "--port=8100",
+        ])
+        assert started[0]["host"] == "127.0.0.1" and started[0]["port"] == 8100
+
+
 def test_an_http_port_with_no_token_is_warned_about(started, tmp_path, caplog):
     # That port serves the whole library in plaintext.
     with caplog.at_level("WARNING"):

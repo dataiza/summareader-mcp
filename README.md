@@ -226,6 +226,46 @@ None of this is needed to read a library that is already on the machine; see
 [above](#reading-a-library-that-is-already-here), which needs no server, no
 token and no key.
 
+### Every setting, and where it can be said
+
+Three values are all that is *required*; the rest of the file is what this
+mirror does once it has them. Every one of them can be said in the file or in
+the environment, and the two that `serve` also takes as flags resolve **flag,
+then environment, then file, then default** — so a config file cannot be
+overruled by a flag nobody typed, and a container can still override one field
+without a new file. `summareader_mcp/config.py` is the only place any of this
+is decided.
+
+| Key | Environment | What it is |
+| --- | --- | --- |
+| `server` | `SUMMAREADER_SYNC_URL` | the sync server this mirrors *from* |
+| `token` | `SUMMAREADER_DEVICE_TOKEN` | this device's token, revocable |
+| `master_key` | `SUMMAREADER_MASTER_KEY` | the library key, base64, **not** revocable |
+| `name` | `SUMMAREADER_MCP_NAME` | what the app's paired-devices list calls this |
+| `bearer_token` | `SUMMAREADER_MCP_TOKEN` | the credential the HTTP port demands. `http_token` is the old spelling and is still read |
+| `host` | `SUMMAREADER_MCP_HOST` | what `serve --transport=http` binds; also `--host`. Loopback by default |
+| `port` | `SUMMAREADER_MCP_PORT` | the port it binds; also `--port`. 8100 by default |
+| `poll_seconds` | `SUMMAREADER_MCP_POLL` | how often a mirror pulls. 300 by default |
+| `fetch_bodies` | `SUMMAREADER_MCP_BODIES` | download article text as well as summaries |
+| `library` | `SUMMAREADER_MCP_LIBRARY` | the file spelling of `--library`: read a library that is already here and do not sync. With it set, the three required values are not |
+| `cache_dir` | `SUMMAREADER_MCP_CACHE` | where `library.sqlite` lives |
+| — | `SUMMAREADER_MCP_CONFIG` | which file all of the above is read from |
+
+`ALLREADER_*` is accepted for every one of these: somebody's deployment
+predates the name.
+
+Two things are deliberately *not* in the file. `--remote` reads a mirror
+somebody else is running and is the one mode with no configuration at all —
+putting it in a config file would mean a file describing a mirror that is not
+this machine's. And `--transport` is how the client on the other end talks to
+this process, decided by whatever spawned it: an MCP client spawns
+`summareader-mcp` with no arguments and expects stdio, and a file that could
+turn that into an HTTP server would break it silently.
+
+**`host` and `port` are here because the console writes them here.** An
+address chosen in a window that comes back the old one at the next login is not
+a choice — see [§7](#7-the-desktop-console).
+
 ### How the command is spelled
 
 The same program answers to three names, and which one you have depends on how
@@ -490,8 +530,9 @@ wheel is `packages = ["summareader_mcp"]`, the sdist excludes `console`, and
 `tkinter` is back in PyInstaller's `excludes`. Flutter 3.47, with `linux`,
 `macos` and `windows` scaffolding committed and only the Linux build actually
 run. It takes the flags the old `gui` subcommand took — `--config`,
-`--library`, `--remote`, `--host` and `--port` — and no `./scripts/run.sh`
-subcommand starts it, because it is not that program.
+`--library`, `--remote`, `--host` and `--port`, the last two defaulting to
+whatever the config file says rather than to an address of their own — and no
+`./scripts/run.sh` subcommand starts it, because it is not that program.
 
 What it shows, and what each control does:
 
@@ -502,7 +543,8 @@ What it shows, and what each control does:
 | **Start / Stop** | the server. With a user unit installed these drive `systemctl --user`; without one, Start runs a child process |
 | **Pull now** | one sync now rather than at the server's next timer — `summareader-mcp pull`, as a subprocess |
 | **Start at login** | writes `~/.config/systemd/user/summareader-mcp.service` and enables it; unticking removes it again. It re-reads from disk afterwards, so it cannot sit ticked beside a service that failed to install. Linux only — the row is absent elsewhere |
-| **Configuration** | the config file's path and what is in it, including whether a bearer token is set — "set", never the value. Read-only text: a window that writes somebody's master key back out is a window that can lose it |
+| **Configuration** | the config file's path and what is in it, including whether a bearer token is set — "set", never the value. Read-only text, the master key and the bearer token most of all: a window that edits somebody's master key is a window that can lose it |
+| **Address** | which interface and port the server binds, chosen from what this machine actually answers on. The one thing the console *writes*: `host` and `port` go back into the config file, and into the unit as well when one is installed, because a unit and a config that disagree is worse than either. The console reads them at startup too, so it opens on the address it was last told to use. Everything else in the file comes back out exactly as it was written — comment keys, keys this version has never heard of, the master key untouched — through a temporary file and a rename, so an interrupted write cannot leave half a config behind. A file that will not parse is a refusal naming the error and the path, never an overwrite. A bind wider than loopback with no `bearer_token` is refused the same way whether it was chosen here or read out of the file |
 | **Search** | the library file directly, and the MCP tools under `--remote`. Date, source and title; there is no article pane, because that is [§2](#2-the-terminal-interface) |
 
 **The server is a child process, not something embedded in the console.**

@@ -132,11 +132,121 @@ class TestBodies:
     def test_on_by_default(self, tmp_path):
         assert Config.load(file=write(tmp_path), environment={}).fetch_bodies
 
+    def test_the_file_can_switch_it_off(self, tmp_path):
+        # JSON spells this false, not "false", and only strings were read —
+        # so the one place this switch is meant to be set did nothing.
+        config = Config.load(file=write(tmp_path, fetch_bodies=False), environment={})
+        assert not config.fetch_bodies
+
     def test_and_can_be_switched_off(self, tmp_path):
         config = Config.load(
             file=write(tmp_path), environment={"SUMMAREADER_MCP_BODIES": "false"}
         )
         assert not config.fetch_bodies
+
+
+class TestTheAddressItBinds:
+    """The console edits these, so the file has to hold them.
+
+    Flag, environment, file, default — the flag half lives in cli.py and is
+    asserted in test_cli; the other three are here.
+    """
+
+    def test_loopback_and_8100_when_nobody_says(self, tmp_path):
+        config = Config.load(file=write(tmp_path), environment={})
+        assert (config.host, config.port) == ("127.0.0.1", 8100)
+
+    def test_from_the_file(self, tmp_path):
+        # A port is a number in JSON, which is how the console writes it.
+        config = Config.load(
+            file=write(tmp_path, host="0.0.0.0", port=9000), environment={}
+        )
+        assert (config.host, config.port) == ("0.0.0.0", 9000)
+
+    def test_the_environment_wins_over_the_file(self, tmp_path):
+        config = Config.load(
+            file=write(tmp_path, host="0.0.0.0", port=9000),
+            environment={
+                "SUMMAREADER_MCP_HOST": "10.0.0.5",
+                "SUMMAREADER_MCP_PORT": "9999",
+            },
+        )
+        assert (config.host, config.port) == ("10.0.0.5", 9999)
+
+    def test_a_port_that_is_not_a_number_says_so(self, tmp_path):
+        with pytest.raises(ConfigError) as raised:
+            Config.load(file=write(tmp_path, port="eight thousand"), environment={})
+        assert "port is a number" in str(raised.value)
+
+
+class TestHowOftenItPulls:
+    def test_five_minutes_when_nobody_says(self, tmp_path):
+        assert Config.load(file=write(tmp_path), environment={}).poll_seconds == 300
+
+    def test_from_the_file_or_the_environment(self, tmp_path):
+        assert (
+            Config.load(file=write(tmp_path, poll_seconds=60), environment={})
+            .poll_seconds
+            == 60
+        )
+        assert (
+            Config.load(
+                file=write(tmp_path), environment={"SUMMAREADER_MCP_POLL": "30"}
+            ).poll_seconds
+            == 30
+        )
+
+
+class TestTheLibraryKey:
+    """`--library` in the file, so the console and the mirror read one file."""
+
+    def test_needs_no_server_no_token_and_no_key(self, tmp_path):
+        path = tmp_path / "config.json"
+        library = tmp_path / "app.sqlite"
+        path.write_text(json.dumps({"library": str(library)}), encoding="utf-8")
+        config = Config.load(file=path, environment={})
+        assert config.reads_a_local_library
+        assert config.database == library
+
+    def test_from_the_environment_too(self, tmp_path):
+        config = Config.load(
+            file=write(tmp_path),
+            environment={"SUMMAREADER_MCP_LIBRARY": str(tmp_path / "app.sqlite")},
+        )
+        assert config.database == tmp_path / "app.sqlite"
+
+
+class TestWhatTheConsoleWrites:
+    """The round trip the console's Address chooser does, checked from here.
+
+    The writing itself is Dart — see console/test/config_test.dart — but the
+    file it leaves behind has to be one this reads back unchanged, which is a
+    question only this side can answer.
+    """
+
+    def test_what_the_console_leaves_behind_is_read_back(self, tmp_path):
+        path = tmp_path / "config.json"
+        # Comment keys, an unknown key and the old spelling of the token: what
+        # the console preserves, spelled the way the example file spells it.
+        path.write_text(
+            json.dumps(
+                {
+                    "_comment": "written by hand",
+                    "server": "https://sync.example",
+                    "token": "t",
+                    "master_key": KEY,
+                    "http_token": "s3cret",
+                    "something_this_version_never_heard_of": 7,
+                    "host": "0.0.0.0",
+                    "port": 9000,
+                }
+            ),
+            encoding="utf-8",
+        )
+        config = Config.load(file=path, environment={})
+        assert (config.host, config.port) == ("0.0.0.0", 9000)
+        assert config.bearer_token == "s3cret"
+        assert config.master_key == base64.b64decode(KEY)
 
 
 class TestWhereItLooksWhenNobodySays:

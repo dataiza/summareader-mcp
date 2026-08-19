@@ -26,6 +26,8 @@ from .sync import Backend, Puller
 
 log = logging.getLogger("summareader_mcp")
 
+#: How often a mirror pulls when nothing says otherwise. `poll_seconds` in the
+#: config file, or SUMMAREADER_MCP_POLL, moves it.
 PULL_EVERY = timedelta(minutes=5)
 
 
@@ -276,12 +278,14 @@ class Syncer:
         store,
         metrics: Metrics | None = None,
         *,
-        every: timedelta = PULL_EVERY,
+        every: timedelta | None = None,
     ) -> None:
         self._config = config
         self._store = store
         self._metrics = metrics or Metrics()
-        self._every = every.total_seconds()
+        self._every = (
+            every or timedelta(seconds=config.poll_seconds)
+        ).total_seconds()
         self._wake = threading.Event()
         self._stop = threading.Event()
 

@@ -71,6 +71,14 @@ class Config:
     #: before the rename, and still read under that name.
     bearer_token: str | None = None
     fetch_bodies: bool = True
+    #: What `serve --transport=http` binds when no flag says otherwise. Here
+    #: rather than in the flags alone because the console changes it, and a
+    #: choice made in a window has to outlive the window.
+    host: str = "127.0.0.1"
+    port: int = 8100
+    #: Seconds between pulls. A library nobody is watching can afford to ask
+    #: less often, and a shared one may want to ask more.
+    poll_seconds: int = 300
     library: Path | None = None
     #: A mirror's address, when this process reads one over the port instead of
     #: holding a library of its own. See `for_remote`.
@@ -131,6 +139,13 @@ class Config:
                 if env.get(spelling):
                     return env[spelling]
             value = stored.get(key)
+            # A JSON file spells a port as a number and a switch as a boolean,
+            # and reading only strings quietly ignored both — `"fetch_bodies":
+            # false` did nothing until this line.
+            if isinstance(value, bool):
+                return "true" if value else "false"
+            if isinstance(value, (int, float)):
+                return str(value)
             return value if isinstance(value, str) and value else default
 
         path = Path(
@@ -145,6 +160,21 @@ class Config:
                 stored = json.loads(path.read_text(encoding="utf-8"))
             except json.JSONDecodeError as error:
                 raise ConfigError(f"{path} is not valid JSON: {error}") from error
+
+        library = pick("library", "SUMMAREADER_MCP_LIBRARY")
+        if library:
+            # The same configuration `for_library` builds: a file that is
+            # already here needs no server, no token and no key, and demanding
+            # them would make the file's spelling of --library refuse to load.
+            return cls(
+                server="",
+                token="",
+                master_key=b"",
+                cache_dir=Path(library).parent,
+                library=Path(library),
+                host=pick("host", "SUMMAREADER_MCP_HOST", "127.0.0.1"),
+                port=_number("port", pick("port", "SUMMAREADER_MCP_PORT", "8100")),
+            )
 
         server = pick("server", "SUMMAREADER_SYNC_URL")
         token = pick("token", "SUMMAREADER_DEVICE_TOKEN")
@@ -169,8 +199,7 @@ class Config:
             token=token,
             master_key=_master_key(master),
             cache_dir=Path(
-                env.get("SUMMAREADER_MCP_CACHE")
-                or env.get("ALLREADER_MCP_CACHE")
+                pick("cache_dir", "SUMMAREADER_MCP_CACHE")
                 or default_cache_dir(environment=env)
             ),
             name=pick("name", "SUMMAREADER_MCP_NAME"),
@@ -185,7 +214,24 @@ class Config:
             fetch_bodies=(pick("fetch_bodies", "SUMMAREADER_MCP_BODIES", "true") or "")
             .lower()
             not in ("false", "0", "no"),
+            host=pick("host", "SUMMAREADER_MCP_HOST", "127.0.0.1"),
+            port=_number("port", pick("port", "SUMMAREADER_MCP_PORT", "8100")),
+            poll_seconds=_number(
+                "poll_seconds", pick("poll_seconds", "SUMMAREADER_MCP_POLL", "300")
+            ),
         )
+
+
+def _number(name: str, value) -> int:
+    """A port that is not a number is a server that will not start.
+
+    Said here, where the file is read, rather than as a ValueError out of
+    whatever eventually tried to bind it.
+    """
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise ConfigError(f"{name} is a number, not {value!r}") from None
 
 
 def _master_key(encoded: str) -> bytes:

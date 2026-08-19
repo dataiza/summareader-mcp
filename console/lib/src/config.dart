@@ -2,8 +2,11 @@
 ///
 /// The same file `config.py` reads, read the same way — JSON first,
 /// environment second — because the console and the mirror have to agree on
-/// which library is being talked about. Read-only, and deliberately: a window
-/// that writes somebody's master key back out is a window that can lose it.
+/// which library is being talked about. Read for everything, written for two
+/// things only: the address and the port the window's Address chooser edits.
+/// A choice made in a window that comes back the old one at the next login is
+/// not a choice. Everything else stays read-only, the master key most of all:
+/// a window that edits somebody's master key is a window that can lose it.
 ///
 /// What is *not* here is the master key itself, the device token's use, or any
 /// of the crypto. The console never decrypts anything; it starts the process
@@ -26,6 +29,8 @@ class MirrorConfig {
     this.bearerToken,
     this.library,
     this.remote,
+    this.host = '127.0.0.1',
+    this.port = 8100,
   });
 
   /// The config file, whether or not it exists — knowing which file to edit is
@@ -42,6 +47,12 @@ class MirrorConfig {
   final String? bearerToken;
   final String? library;
   final String? remote;
+
+  /// What the http transport binds. The same defaults `config.py` holds, so a
+  /// console opened before anything was configured opens on the address the
+  /// server would have used anyway.
+  final String host;
+  final int port;
 
   String get database => library ?? '$cacheDir/library.sqlite';
 
@@ -96,31 +107,81 @@ class MirrorConfig {
       }
     }
 
-    String? pick(String key, String envKey) =>
-        _first(env, [
-          envKey,
-          envKey.replaceFirst('SUMMAREADER', 'ALLREADER'),
-        ]) ??
-        (stored[key] is String && (stored[key] as String).isNotEmpty
-            ? stored[key] as String
-            : null);
+    String? pick(String key, String envKey) {
+      final fromEnv = _first(env, [
+        envKey,
+        envKey.replaceFirst('SUMMAREADER', 'ALLREADER'),
+      ]);
+      if (fromEnv != null) return fromEnv;
+      final value = stored[key];
+      // A JSON file spells a port as a number, not as a string, and reading
+      // only strings would leave the file's port silently unread.
+      if (value is num || value is bool) return '$value';
+      return value is String && value.isNotEmpty ? value : null;
+    }
 
     return MirrorConfig(
       file: path,
-      cacheDir:
-          _first(env, ['SUMMAREADER_MCP_CACHE', 'ALLREADER_MCP_CACHE']) ??
-          defaultCacheDir(env),
+      cacheDir: pick('cache_dir', 'SUMMAREADER_MCP_CACHE') ?? defaultCacheDir(env),
       server: pick('server', 'SUMMAREADER_SYNC_URL'),
       token: pick('token', 'SUMMAREADER_DEVICE_TOKEN'),
       masterKey: pick('master_key', 'SUMMAREADER_MASTER_KEY'),
       instanceName: pick('name', 'SUMMAREADER_MCP_NAME'),
+      // The file's spelling of --library, read here as well so the console and
+      // the mirror cannot disagree about which library is being talked about.
+      library: pick('library', 'SUMMAREADER_MCP_LIBRARY'),
       // `http_token` was the old spelling, and config files holding it are on
       // disk on machines nobody is going to edit today. Read rather than
       // migrated.
       bearerToken:
           pick('bearer_token', 'SUMMAREADER_MCP_TOKEN') ??
           pick('http_token', 'SUMMAREADER_MCP_TOKEN'),
+      host: pick('host', 'SUMMAREADER_MCP_HOST') ?? '127.0.0.1',
+      port: int.tryParse(pick('port', 'SUMMAREADER_MCP_PORT') ?? '') ?? 8100,
     );
+  }
+
+  /// Write the address back, and nothing else.
+  ///
+  /// Every other key is put back exactly as it was read, including the ones
+  /// this version has never heard of and the `_token`-style comment keys the
+  /// example file uses — the file belongs to the person, not to this window.
+  /// The master key and the bearer token are among them: they are copied
+  /// through untouched, never parsed, never shown and never edited here.
+  ///
+  /// Through a temporary file and a rename, so an interrupted write leaves the
+  /// old file whole. Half of a config file is a lost master key.
+  ///
+  /// A file that will not parse is a refusal naming the error and the path:
+  /// the alternative is overwriting somebody's typo'd config with two keys and
+  /// nothing else in it.
+  void saveBind({required String host, required int port}) {
+    final handle = File(file);
+    var stored = <String, dynamic>{};
+    if (handle.existsSync()) {
+      final Object? decoded;
+      try {
+        decoded = jsonDecode(handle.readAsStringSync());
+      } on FormatException catch (error) {
+        throw StateError('$file is not valid JSON (${error.message}) — '
+            'nothing written. Fix it and try again.');
+      }
+      if (decoded is! Map<String, dynamic>) {
+        throw StateError('$file is not a JSON object — nothing written.');
+      }
+      // jsonDecode keeps the order it read, so the file comes back out in the
+      // order somebody wrote it, with these two appended the first time.
+      stored = decoded;
+    }
+    stored['host'] = host;
+    stored['port'] = port;
+    final temp = File('$file.writing');
+    temp.parent.createSync(recursive: true);
+    temp.writeAsStringSync(
+      '${const JsonEncoder.withIndent('  ').convert(stored)}\n',
+      flush: true,
+    );
+    temp.renameSync(file);
   }
 }
 
@@ -164,19 +225,18 @@ String defaultCacheDir([Map<String, String>? environment]) =>
 /// The same four flags the `gui` subcommand took, hand-parsed: an argument
 /// parser for four options is a dependency to explain in a review.
 class Options {
-  const Options({
-    this.config,
-    this.library,
-    this.remote,
-    this.host = '127.0.0.1',
-    this.port = 8100,
-  });
+  const Options({this.config, this.library, this.remote, this.host, this.port});
 
   final String? config;
   final String? library;
   final String? remote;
-  final String host;
-  final int port;
+
+  /// Null when nothing was typed, rather than the default — otherwise a flag
+  /// nobody passed would win over the address in the config file. Flag, then
+  /// environment, then file, then default; the last three are
+  /// [MirrorConfig.load]'s order already.
+  final String? host;
+  final int? port;
 
   factory Options.parse(List<String> argv) {
     final values = <String, String>{};
@@ -194,8 +254,8 @@ class Options {
       config: values['config'],
       library: values['library'],
       remote: values['remote'],
-      host: values['host'] ?? '127.0.0.1',
-      port: int.tryParse(values['port'] ?? '') ?? 8100,
+      host: values['host'],
+      port: int.tryParse(values['port'] ?? ''),
     );
   }
 

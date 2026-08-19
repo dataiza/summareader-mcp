@@ -73,13 +73,17 @@ def _parser() -> argparse.ArgumentParser:
 
     serve = sub.add_parser("serve", help="the MCP server (the default)")
     serve.add_argument("--transport", choices=("stdio", "http"), default="stdio")
+    # No defaults here: a flag that defaults is a flag that cannot be told
+    # apart from an unset one, and the config file's host and port would then
+    # never win over an argparse default nobody typed. The defaults live in
+    # Config, which is the one place configuration is resolved.
     serve.add_argument(
         "--host",
-        default="127.0.0.1",
-        help="what the http transport binds (default: loopback; a container "
-        "wants 0.0.0.0, since its port is published by the runtime)",
+        help="what the http transport binds (default: the config's host, or "
+        "loopback; a container wants 0.0.0.0, since its port is published by "
+        "the runtime)",
     )
-    serve.add_argument("--port", type=int, default=8100)
+    serve.add_argument("--port", type=int, help="default: the config's port, or 8100")
     serve.set_defaults(run=_serve)
 
     pull = sub.add_parser("pull", help="sync once and say what arrived")
@@ -204,11 +208,14 @@ def _pull(args) -> int:
 def _serve(args) -> int:
     from .server import serve
 
+    config = _config(args)
+    # Flag, then environment, then file, then default — the last three are
+    # Config.load's order already, so this line only has to add the flag.
     return serve(
-        _config(args),
+        config,
         transport=getattr(args, "transport", "stdio"),
-        host=getattr(args, "host", "127.0.0.1"),
-        port=getattr(args, "port", 8100),
+        host=getattr(args, "host", None) or config.host,
+        port=getattr(args, "port", None) or config.port,
     )
 
 

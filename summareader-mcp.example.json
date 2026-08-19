@@ -9,6 +9,13 @@
   "name": "MCP mirror",
   "_bearer_token": "Required to call the MCP HTTP port. Without it the port is open to anyone who can reach it and serves the whole library in plaintext; the server warns at startup. Any long random string: openssl rand -base64 32. Called http_token before; that spelling is still read.",
   "bearer_token": "",
+  "_host": "What `serve --transport=http` binds, and the address the console's Address chooser writes back here. Loopback by default, which is one machine talking to itself; a wider address serves the whole library in plaintext and is refused without a bearer_token. A container wants 0.0.0.0 — its boundary is the published port.",
+  "host": "127.0.0.1",
+  "_port": "The port that address is bound on. --host and --port on `serve` still win over both this and the environment.",
+  "port": 8100,
+  "_poll_seconds": "How often a mirror pulls. Five minutes by default.",
+  "poll_seconds": 300,
+  "_library": "Read this library file directly, read-only, and do not sync at all — the file's spelling of --library, for running on the same machine as the app. With it set, nothing above is needed: no server, no token and no key.",
   "_fetch_bodies": "Download each article's text as well as its summary, so search covers what the articles say rather than only their titles. A server can afford the bytes; set false if this one cannot.",
   "fetch_bodies": true
 }

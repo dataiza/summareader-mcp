@@ -126,11 +126,14 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     super.initState();
     _open();
     if (_local) {
+      // Flag first, then whatever the config file and the environment say —
+      // which is the whole point of writing the address back: this window
+      // opens on the address it was last told to use.
       final supervisor = Supervisor(
         configFile: _config.file,
         cacheDir: _config.cacheDir,
-        host: widget.options.host,
-        port: widget.options.port,
+        host: widget.options.host ?? _config.host,
+        port: widget.options.port ?? _config.port,
         bearerToken: _config.bearerToken,
       );
       // A unit already on disk knows where the server is; this console's own
@@ -144,6 +147,10 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       }
       _supervisor = supervisor;
       _atLogin = serviceInstalled();
+      // An address that came out of the file gets the same refusal as one
+      // chosen in the window — said now rather than at the first click, since
+      // the file is where a wide bind with no token most easily hides.
+      _message = _message.isEmpty ? (_refusal(supervisor.host) ?? '') : _message;
       // The one hook that closes the loop the review opened an hour ago: a
       // child started here dies here, and a server systemd owns is left alone.
       _lifecycle = AppLifecycleListener(
@@ -277,6 +284,12 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     final refused = _refusal(host);
     if (refused != null) return refused;
 
+    // Written before anything is stopped, and before the unit: a config file
+    // that will not parse is a refusal, and refusing with the server still up
+    // on its old address beats leaving it down. A unit and a config that
+    // disagree is worse than either, so both or neither.
+    _config.saveBind(host: host, port: port);
+
     final wasRunning = await supervisor.running();
     await supervisor.stop();
     supervisor.host = host;
@@ -374,8 +387,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           incomplete: _config.missing,
         ),
         stats: formatStats(_counts, _cursor, _scraped),
-        host: _supervisor?.host ?? widget.options.host,
-        port: _supervisor?.port ?? widget.options.port,
+        host: _supervisor?.host ?? widget.options.host ?? _config.host,
+        port: _supervisor?.port ?? widget.options.port ?? _config.port,
         hosts: _supervisor == null
             ? const []
             : bindHosts(_supervisor!.host, _lan),
