@@ -23,7 +23,7 @@ datas += collect_data_files("textual")
 hiddenimports = (
     collect_submodules("textual.widgets")
     + collect_submodules("uvicorn")
-    + ["summareader_mcp.tui"]
+    + ["summareader_mcp.tui", "summareader_mcp.gui"]
 )
 
 analysis = Analysis(
@@ -34,8 +34,11 @@ analysis = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
-    # Nothing here needs a GUI toolkit or a test runner, and both are large.
-    excludes=["tkinter", "pytest", "IPython"],
+    # tkinter is not excluded any more: the `gui` subcommand is built on it,
+    # and a frozen bundle without it is a window that only exists in a
+    # checkout. It is in the standard library, so this costs the toolkit's own
+    # shared libraries and nothing in the dependency list.
+    excludes=["pytest", "IPython"],
     noarchive=False,
 )
 pyz = PYZ(analysis.pure)

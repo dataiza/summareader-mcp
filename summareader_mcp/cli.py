@@ -110,6 +110,14 @@ def _parser() -> argparse.ArgumentParser:
     ui = sub.add_parser("ui", help="the terminal interface")
     ui.set_defaults(run=_ui)
 
+    gui = sub.add_parser("gui", help="the desktop window")
+    # The same two flags `serve` takes, because this window supervises exactly
+    # that command — see summareader_mcp/gui.py. A unit already installed
+    # overrides both: it knows where the server actually is.
+    gui.add_argument("--host", default="127.0.0.1")
+    gui.add_argument("--port", type=int, default=8100)
+    gui.set_defaults(run=_gui)
+
     return parser
 
 
@@ -216,6 +224,20 @@ def _ui(args) -> int:
     from .tui import run_ui
 
     return run_ui(_config(args), _store(args) if args.remote else None)
+
+
+def _gui(args) -> int:
+    # Imported here rather than at the top: Tkinter is in the standard library
+    # but not in every build of it, and `summareader-mcp search` has no
+    # business failing on a machine without Tk.
+    from .gui import gui
+
+    return gui(
+        _config(args),
+        config_file=args.config or default_config_path(),
+        host=args.host,
+        port=args.port,
+    )
 
 
 # ---- shared ------------------------------------------------------------
