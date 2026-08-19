@@ -6,8 +6,11 @@ decrypted copy of the library, and answers questions about it.
 It reads; it does not write. Nothing it holds ever changes, which is what
 makes it safe to point at a library you care about.
 
-Four ways in — MCP, a command line, a terminal interface and a window — over
-one set of functions, so they cannot answer the same question differently.
+Three ways in — MCP, a command line and a terminal interface — over one set of
+functions, so they cannot answer the same question differently. A desktop
+console ([§7](#7-the-desktop-console)) starts and watches it from a window; it
+is a separate application, and it reads the same library through the same
+match.
 
 ## Why it is a device and not part of the server
 
@@ -192,10 +195,12 @@ this mirrors *from*. `--remote` is a mirror it reads.
 
 ## Running it
 
-Seven ways to start it, and what separates them is who is on the other end: a
-model, a person at a terminal, a person at a window, a shell, or nobody at all
-until a client connects. They are the same program over the same functions — the choice is
-about where it lives, not about what it can answer.
+Six ways to start it, and what separates them is who is on the other end: a
+model, a person at a terminal, a shell, or nobody at all until a client
+connects. They are the same program over the same functions — the choice is
+about where it lives, not about what it can answer. The seventh,
+[§7](#7-the-desktop-console), is not one of them: it is a window that starts
+one of these for you.
 
 Configuration is three values, whichever way: the sync server, a device token,
 and the master key. Put them in a file rather than the environment — `docker
@@ -245,15 +250,16 @@ and whether Python of the right version is on the machine:
 | A model, over a port | `./scripts/run.sh serve --transport=http` | `docker compose up -d` |
 | It back after a reboot | `./scripts/install.sh` | `./scripts/install.sh --docker` |
 | To read it yourself | `./scripts/run.sh ui` | `./scripts/run.sh ui` — on the host, against the same `./.cache` the container mounts |
-| To start and watch it from a window | `./scripts/run.sh gui` | — a container has no display; run the window on the host |
+| To start and watch it from a window | `cd console && flutter run -d linux` | — a container has no display; the console runs on the host |
 | To read a mirror on another box | `./scripts/run.sh --remote http://box:8100 …` | same — it is the port that answers |
 | No Python on the machine | `./scripts/freeze.sh`, then `./dist/summareader-mcp` | any of the above |
 
-The window ([§7](#7-in-a-window)) is for the machine that holds the library: it
-starts and stops the server there and searches what it holds. Reading a mirror
-that lives on some other machine is the terminal interface's job over
-`--remote`, which needs no window and no display — so the two do not overlap
-and neither is a smaller version of the other.
+The console ([§7](#7-the-desktop-console)) is for the machine that holds the
+library: it starts and stops the server there and searches what it holds. It is
+its own application, in `console/`, and no `./scripts/run.sh` subcommand starts
+it. Reading a mirror that lives on some other machine is the terminal
+interface's job over `--remote`, which needs no window and no display — so the
+two do not overlap and neither is a smaller version of the other.
 
 ### 1. As an MCP server
 
@@ -318,9 +324,9 @@ title:rust before:2026-08-01
 else stays words to search for, so a title with a colon in it costs a search
 rather than an error.
 
-There is a window too, [§7](#7-in-a-window), and it is not this: the window
-starts the server and searches, and stops at the list of results. Reading an
-article is what this interface is for.
+There is a window too, [§7](#7-the-desktop-console), and it is not this: the
+console starts the server and searches, and stops at the list of results.
+Reading an article is what this interface is for.
 
 The picture above is the program rather than a drawing of it —
 `scripts/screenshot.py` seeds a small library through the real store and paints
@@ -440,10 +446,11 @@ compose file has the block to uncomment.
 
 PyInstaller, driven by `summareader-mcp.spec`. One file that needs no Python on
 the machine it runs on, which is what a desktop build has to be able to hand
-over, and which serves, searches, paints the terminal interface and opens
-the window like any other way of starting it — `tkinter` is no longer excluded
-from the bundle and `summareader_mcp.gui` is named as a hidden import, because
-what PyInstaller cannot see it does not pack. The script builds it and then runs it — `--help`, a
+over, and which serves, searches and paints the terminal interface like any
+other way of starting it. **No window is in it:** the console is a Flutter
+application in `console/`, built separately, and `tkinter` is excluded again
+now that nothing left in this package draws anything — ten megabytes of shared
+libraries that would never open a display. The script builds it and then runs it — `--help`, a
 library created from `schema.sql`, and that same file read back through
 `--library` — because the interesting failure is not at start-up: `schema.sql`
 is a data file, and a bundle that lost it starts perfectly and fails when
@@ -454,20 +461,26 @@ executable has been produced so far**; the macOS and Windows builds have to run
 on macOS and Windows, and until somebody does that they are untested rather
 than merely unbuilt.
 
-### 7. In a window
+### 7. The desktop console
 
 ```sh
-./scripts/run.sh gui                    # --host and --port, as serve takes them
+cd console && flutter run -d linux          # or: flutter build linux --release
 ```
 
-![The window: status, the counts, the buttons, the configuration panel and the search box](docs/gui.png)
+![The console: status, the counts, the buttons, the configuration panel and the search box](docs/console.png)
 
 For the machine that holds the library, and for the two jobs that were
 terminal-only with no good reason: keeping the server running, and asking what
-is in there. Tkinter, from the standard library — a window with six controls on
-it does not earn a toolkit that would put another hundred and fifty megabytes
-inside the frozen executable, and the import is lazy, so an interpreter built
-without Tk still runs everything else.
+is in there.
+
+**It is not part of the Python package.** `console/` is a Flutter application
+of its own, built and shipped by `flutter build` and invisible to pip: the
+wheel is `packages = ["summareader_mcp"]`, the sdist excludes `console`, and
+`tkinter` is back in PyInstaller's `excludes`. Flutter 3.47, with `linux`,
+`macos` and `windows` scaffolding committed and only the Linux build actually
+run. It takes the flags the old `gui` subcommand took — `--config`,
+`--library`, `--remote`, `--host` and `--port` — and no `./scripts/run.sh`
+subcommand starts it, because it is not that program.
 
 What it shows, and what each control does:
 
@@ -476,50 +489,84 @@ What it shows, and what each control does:
 | **status line** | whether the server is answering, on which address, and whether systemd is the one running it |
 | **Library** | articles, unread, summarized, with text, sources and the cursor — read from the library file the search box has open anyway — then last pull and failures, which are not in the file because they live in the running process's memory, and are scraped from its `/metrics` with the configured `bearer_token`. `/health` is what "running" means |
 | **Start / Stop** | the server. With a user unit installed these drive `systemctl --user`; without one, Start runs a child process |
-| **Pull now** | one sync now rather than at the server's next timer — the same `Puller` the command line's `pull` runs, in this process, since WAL makes a second reader of the same file a non-event and every record applies by id |
+| **Pull now** | one sync now rather than at the server's next timer — `summareader-mcp pull`, as a subprocess |
 | **Start at login** | writes `~/.config/systemd/user/summareader-mcp.service` and enables it; unticking removes it again. It re-reads from disk afterwards, so it cannot sit ticked beside a service that failed to install. Linux only — the row is absent elsewhere |
-| **Configuration** | the config file's path and what is in it, including whether a bearer token is set. Read-only text: a window that writes somebody's master key back out is a window that can lose it |
-| **Search** | the same `Store` the command line's `search` uses, and `RemoteStore` under `--remote` — one code path, so it cannot answer differently. Date, source and title; there is no article pane, because that is [§2](#2-the-terminal-interface) |
+| **Configuration** | the config file's path and what is in it, including whether a bearer token is set — "set", never the value. Read-only text: a window that writes somebody's master key back out is a window that can lose it |
+| **Search** | the library file directly, and the MCP tools under `--remote`. Date, source and title; there is no article pane, because that is [§2](#2-the-terminal-interface) |
 
-**The server is a child process, not something embedded in the window.**
-`serve` blocks, holds the master key, and is the thing being restarted — inside
-the window an unhandled traceback in the sync loop would take the window down
-with it, and the desktop path and the service path would be two pieces of code
-free to drift apart. So the window starts exactly the argv the unit's
-`ExecStart` line holds: `serve_argv()` is the one spelling of "run the server",
-the unit is rendered from it, and a test asserts the two are the same string.
+**The server is a child process, not something embedded in the console.**
+`serve` blocks, holds the master key, and is the thing being restarted — and it
+is Python, which this is not, so it could hardly be anything else. It is
+started with exactly the argv the unit's `ExecStart` line holds: `serveArgv()`
+is the one spelling of "run the server", the unit is rendered from it, and
+`console/test/mirror_test.dart` asserts the two are the same string. A desktop
+path and a service path free to spell the same command differently drift until
+one of them is wrong at the next login, in a log nobody has open.
 
 **One owner at a time.** With a unit installed, systemd owns the server and the
-window is a remote control for it — Start and Stop drive `systemctl --user`,
-and the window never starts a child of its own. Two servers on one library both
-pull and both advance the same cursor, and the second one simply fails to bind
-the port, which from a window reads as "Start did nothing".
+console is a remote control for it — Start and Stop drive `systemctl --user`,
+and the console never starts a child of its own. Two servers on one library
+both pull and both advance the same cursor, and the second one simply fails to
+bind the port, which from a window reads as "Start did nothing". For the same
+reason, closing the console stops a child it started and never a server systemd
+owns: outliving the console is the entire point of installing the unit.
 
-"Start at login" writes and removes the unit itself rather than calling
+**"Start at login" writes and removes the unit itself** rather than calling
 `scripts/install.sh`. That script wants a repository, builds a virtualenv and
-runs `pip install .`; a frozen executable on somebody's desktop has none of
-those and still deserves a server that comes back after a reboot.
+runs `pip install .`; a shipped console has none of those and still deserves a
+server that comes back after a reboot.
 
-Under `--remote` or `--library` the window says so in a sentence at the top and
-greys out Start, Stop and Pull — a reader over a port has no master key, and a
-library file the app owns is not this program's to sync. Search and the counts
-work in both, which is the half that is actually a reading job. It is the same
-refusal `cli.py` gives when `serve` is asked for over `--remote`, in the place
-a window can put it.
+**It has to find the mirror**, which the Tk window never did — that one could
+start `sys.executable`, because it *was* the mirror. This one looks at
+`SUMMAREADER_MCP_EXE`, then a `summareader-mcp` sitting beside the console
+itself, which is how a bundle would ship the two together, and finally the bare
+name on `PATH`. Nothing packages them together yet, so from a checkout the
+spelling that works is `SUMMAREADER_MCP_EXE=./scripts/run.sh`.
 
-The picture is the real window rather than a drawing of it:
+**Pull now is a subprocess**, `summareader-mcp pull`, rather than a sync run in
+this process the way the Python window ran it. Pulling means the master key,
+the envelope format and the whole protocol, and a third implementation of those
+— in Dart, in a console — is exactly what
+[the section above](#a-second-implementation-checked-against-the-first) is
+about. Every record applies by id and the library is in WAL, so a pull that
+overlaps the server's own timer costs a duplicate fetch and nothing worse.
+
+**Search is the match the command line makes.** The console reads the library
+with `package:sqlite3`, registering the same `word_start` function and running
+the same LIKE prefilter in front of it that `store.py` does — and
+`console/test/library_test.dart` runs `summareader-mcp search` over ten queries
+and compares the ids it gets back. A search box that answers a slightly
+different question than the command line is the failure this repository is
+otherwise entirely written around.
+
+Under `--remote` or `--library` the console says so in a sentence at the top
+and greys out Start, Stop and Pull — a reader over a port has no master key,
+and a library file the app owns is not this program's to sync. Search and the
+counts work in both, which is the half that is actually a reading job. It is
+the same refusal `cli.py` gives when `serve` is asked for over `--remote`, in
+the place a window can put it. There is a third: a config with no server, no
+token or no master key names the one that is missing, so a first launch says
+what to fill in instead of starting a server that exits a second later.
+
+**The look is the app's.** `console/packages/summareader_ui/` is a copy of the
+package SummaReader draws itself with, refreshed by `scripts/sync-ui.sh` (the
+sibling `../summareader` unless told otherwise), with a test that fails when
+the two have drifted and skips where there is no checkout to compare against. A
+copy rather than a `git:` dependency because reading that repository's metadata
+needs a credential the build machines do not have.
+
+The picture is the console rather than a drawing of it, and it is a test:
 
 ```sh
-DISPLAY=:0 uv run python scripts/gui_screenshot.py
+cd console && flutter test                    # fails when the picture is stale
+cd console && flutter test --update-goldens   # redraws docs/console.png
 ```
 
-Unlike the terminal interface, which Textual can paint headlessly, Tk has no
-software renderer — so this one is a photograph and needs a display, and the
-script says that and stops rather than writing nothing. It seeds the same demo
-library `scripts/screenshot.py` uses and points `XDG_CONFIG_HOME` at a
-temporary directory, so "Start at login" reads false whatever the machine
-taking the picture has installed, and taking it can never write a unit into
-somebody's real config.
+Flutter paints to a canvas with no display at all, from the same demo library
+`scripts/screenshot.py` seeds. The Tk picture needed `$DISPLAY`, a window
+manager willing to leave the window its own size, and a screen capture — so it
+was taken by hand once and went quietly out of date afterwards, which is the
+thing a picture in a README does worst.
 
 ### Where it keeps things
 
@@ -567,10 +614,20 @@ uv venv && uv pip install -e ".[dev]"
 pytest
 ```
 
-A hundred and thirty-nine tests: the protocol against the app's own vectors, the summary
+A hundred and sixty-three tests: the protocol against the app's own vectors, the summary
 repair ladder against a corpus of real model failures, the store, the puller
 against a fake sync server, the command line, and the terminal interface driven
 headlessly.
+
+The console has a suite of its own, in Dart, because none of the above can see
+it:
+
+```sh
+cd console && flutter test
+```
+
+It asserts the argv against the unit file, the teardown rule, the picture in
+`docs/`, and its search against `summareader-mcp search` over the same library.
 
 What is *not* covered by them: a real sync server with real encrypted entries.
 The puller is tested against a fake that seals its entries with the same code
