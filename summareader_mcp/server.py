@@ -8,6 +8,7 @@ keeps working. What changed is that they now answer.
 from __future__ import annotations
 
 import logging
+import secrets
 import sys
 import threading
 from datetime import timedelta
@@ -82,10 +83,24 @@ def serve(
         # opposite — a process bound to loopback inside one is reachable by
         # nothing — so it passes --host=0.0.0.0, and its boundary stays the
         # published port and the token. See the Dockerfile.
-        server.run(transport="streamable-http", host=host, port=port)
+        # Built rather than run, because `run` gives nowhere to put the token
+        # check and the tools had none: `http_token` guarded /metrics alone,
+        # so the whole library answered anyone who could reach this port. The
+        # app is the same one `run` would have built.
+        app = server.streamable_http_app(host=host)
+        if config.http_token:
+            app = _guarded(app, config.http_token)
+        _run_http(app, host, port)
     else:
         server.run(transport="stdio")
     return 0
+
+
+def _run_http(app, host: str, port: int) -> None:  # pragma: no cover
+    """The one line that blocks, kept apart so a test can stand in front of it."""
+    import uvicorn
+
+    uvicorn.run(app, host=host, port=port, log_level="info")
 
 
 def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> None:
@@ -209,7 +224,38 @@ def _authorised(request: Request, config: Config) -> bool:
     if not config.http_token:
         return True
     header = request.headers.get("authorization", "")
-    return header.removeprefix("Bearer ").strip() == config.http_token
+    return _matches(header, config.http_token)
+
+
+def _matches(header: str, token: str) -> bool:
+    return secrets.compare_digest(header.removeprefix("Bearer ").strip(), token)
+
+
+def _guarded(app, token: str):
+    """Bearer auth in front of the whole app, /health excepted.
+
+    ASGI rather than Starlette middleware because the app is already built and
+    this is one `if`. /health stays open on purpose — a health check that needs
+    a credential is one somebody's orchestrator cannot make, and it answers
+    "ok" and nothing else. /metrics checks the same token again on its own; the
+    second check costs nothing and keeps that route right under stdio too.
+    """
+
+    async def guard(scope, receive, send):
+        if scope["type"] != "http" or scope.get("path") == "/health":
+            await app(scope, receive, send)
+            return
+        header = ""
+        for key, value in scope.get("headers") or ():
+            if key == b"authorization":
+                header = value.decode("latin-1")
+                break
+        if _matches(header, token):
+            await app(scope, receive, send)
+            return
+        await PlainTextResponse("unauthorized\n", status_code=401)(scope, receive, send)
+
+    return guard
 
 
 class Syncer:

@@ -27,7 +27,13 @@ def started(tmp_path: Path, monkeypatch):
     def fake_run(self, transport="stdio", **kwargs):
         calls.append({"transport": transport, **kwargs})
 
+    def fake_http(app, host, port):
+        calls.append({"transport": "streamable-http", "host": host, "port": port})
+
     monkeypatch.setattr(server_module.MCPServer, "run", fake_run)
+    # HTTP no longer goes through `run`: the app is built so the token check can
+    # be put in front of it, and this is the line that would otherwise block.
+    monkeypatch.setattr(server_module, "_run_http", fake_http)
     # A real file, because a library that is not there is now an error with a
     # sentence rather than a sqlite traceback — see test_cli.
     open_store(tmp_path / "l.sqlite").close()
@@ -135,3 +141,49 @@ class TestTheSyncLoop:
         syncer.stop()
         thread.join(timeout=2)
         assert len(pulls) >= 2
+
+
+class TestTheTokenGuardsTheTools:
+    """`http_token` guarded /metrics and nothing else.
+
+    Which meant the MCP endpoint — every tool, the whole library — answered
+    anyone who could reach the port, while the installer and the README both
+    said the token was what made that port safe.
+    """
+
+    async def _get(self, app, path, headers=()):
+        sent: list[dict] = []
+        scope = {"type": "http", "path": path, "method": "GET", "headers": list(headers)}
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(message):
+            sent.append(message)
+
+        await app(scope, receive, send)
+        return sent
+
+    async def _inner(self, scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"the library"})
+
+    async def test_no_token_is_401_rather_than_the_library(self):
+        guarded = server_module._guarded(self._inner, "secret")
+        assert (await self._get(guarded, "/mcp"))[0]["status"] == 401
+
+    async def test_the_wrong_token_is_401_too(self):
+        guarded = server_module._guarded(self._inner, "secret")
+        sent = await self._get(guarded, "/mcp", [(b"authorization", b"Bearer nope")])
+        assert sent[0]["status"] == 401
+
+    async def test_the_right_one_gets_through(self):
+        guarded = server_module._guarded(self._inner, "secret")
+        sent = await self._get(guarded, "/mcp", [(b"authorization", b"Bearer secret")])
+        assert sent[0]["status"] == 200
+
+    async def test_health_stays_open(self):
+        # An orchestrator's health check has no credential to offer, and this
+        # route answers "ok" and nothing about the library.
+        guarded = server_module._guarded(self._inner, "secret")
+        assert (await self._get(guarded, "/health"))[0]["status"] == 200
