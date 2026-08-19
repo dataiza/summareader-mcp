@@ -67,7 +67,10 @@ void main() {
     tester,
   ) async {
     await draw(tester, reading(refusal(library: '/home/you/library.sqlite')));
-    expect(find.textContaining('read-only'), findsOneWidget);
+    // The refusal itself, not merely the words: the Library row's own hint
+    // says "read-only" too, and matching that would pass with the sentence
+    // this test exists for missing entirely.
+    expect(find.textContaining('nothing to start'), findsOneWidget);
     expect(find.textContaining('nothing to pull'), findsOneWidget);
   });
 

@@ -22,6 +22,8 @@ class ConsoleState {
     required this.running,
     required this.stats,
     required this.configRows,
+    this.libraryPath = '',
+    this.ownsLibrary = true,
     this.host = '127.0.0.1',
     this.port = 8100,
     this.hosts = const [],
@@ -48,6 +50,11 @@ class ConsoleState {
   final List<LanAddr> hosts;
   final List<(String, String)> stats;
   final List<(String, String)> configRows;
+
+  /// The library on screen, and whether this mirror fills it or merely reads
+  /// one somebody else fills.
+  final String libraryPath;
+  final bool ownsLibrary;
   final List<Item> results;
 
   /// Whether this console is the machine that holds the library. Start, Stop
@@ -76,6 +83,7 @@ class ConsoleView extends StatelessWidget {
     this.onAtLogin,
     this.onBind,
     this.onPort,
+    this.onLibrary,
   });
 
   final ConsoleState state;
@@ -89,6 +97,9 @@ class ConsoleView extends StatelessWidget {
   final ValueChanged<bool>? onAtLogin;
   final ValueChanged<String>? onBind;
   final ValueChanged<String>? onPort;
+
+  /// A path, and whether this mirror is to own the library there.
+  final void Function(String path, {required bool existing})? onLibrary;
 
   @override
   Widget build(BuildContext context) {
@@ -306,9 +317,56 @@ class ConsoleView extends StatelessWidget {
 
   Widget _configuration() => _section(
     'Configuration',
-    'Read-only. Editing JSON by hand is the other step only a terminal '
-        'could do, and knowing which file to edit is most of it.',
+    'Where the library is, and what the rest of it says. Everything but the '
+        'library is read-only here: a window that edits somebody\'s master '
+        'key is a window that can lose it.',
     _card([
+      _row(
+        'Library',
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                Segment(
+                  label: 'Its own copy',
+                  selected: state.ownsLibrary,
+                  onTap: state.busy
+                      ? null
+                      : () => onLibrary?.call(state.libraryPath,
+                          existing: false),
+                ),
+                Segment(
+                  label: 'An existing library',
+                  selected: !state.ownsLibrary,
+                  onTap: state.busy
+                      ? null
+                      : () => onLibrary?.call(state.libraryPath,
+                          existing: true),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            _PathField(
+              key: ValueKey('library:${state.libraryPath}'),
+              path: state.libraryPath,
+              onSubmitted: onLibrary == null || state.busy
+                  ? null
+                  : (value) =>
+                      onLibrary!(value, existing: !state.ownsLibrary),
+            ),
+          ],
+        ),
+        hint: state.ownsLibrary
+            ? 'This mirror fills it, by pulling and decrypting. The path is '
+                  'the directory it lives in; the library itself is made on '
+                  'the first pull.'
+            : 'Somebody else fills it — the app, on this machine — and it is '
+                  'opened read-only. Needs no server, token or master key, '
+                  'and nothing here will pull into it.',
+      ),
       for (final (label, value) in state.configRows)
         _row(
           label,
@@ -453,6 +511,37 @@ class ConsoleView extends StatelessWidget {
         child: Align(alignment: Alignment.centerRight, child: control),
       ),
     ],
+  );
+}
+
+/// A path, in a field wide enough to read one.
+///
+/// Same reason as the port field below: rebuilt from state twice a second, a
+/// controller loses the caret mid-word.
+class _PathField extends StatefulWidget {
+  const _PathField({super.key, required this.path, this.onSubmitted});
+
+  final String path;
+  final ValueChanged<String>? onSubmitted;
+
+  @override
+  State<_PathField> createState() => _PathFieldState();
+}
+
+class _PathFieldState extends State<_PathField> {
+  late final _controller = TextEditingController(text: widget.path);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => ArField(
+    controller: _controller,
+    background: Ar.neutral100,
+    onSubmitted: widget.onSubmitted,
   );
 }
 

@@ -16,6 +16,57 @@ import 'package:summareader_mcp_console/src/mirror.dart';
 const exe = ['/home/you/.local/bin/summareader-mcp'];
 
 void main() {
+  group('which library, and whose', () {
+    test('an existing library has to exist', () {
+      final missing = '${Directory.systemTemp.path}/nothing-here.sqlite';
+      expect(libraryRefusal(missing, existing: true), contains('No file at'));
+    });
+
+    test('and is accepted when it does', () {
+      final dir = Directory.systemTemp.createTempSync();
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}/library.sqlite')..writeAsStringSync('');
+
+      expect(libraryRefusal(file.path, existing: true), isNull);
+    });
+
+    test('its own copy refuses a directory that already holds one', () {
+      // Otherwise "its own copy" quietly adopts a library something else is
+      // filling, and two cursors start fighting over one file.
+      final dir = Directory.systemTemp.createTempSync();
+      addTearDown(() => dir.deleteSync(recursive: true));
+      File('${dir.path}/library.sqlite').writeAsStringSync('');
+
+      expect(libraryRefusal(dir.path, existing: false), contains('already'));
+    });
+
+    test('its own copy accepts an empty directory', () {
+      final dir = Directory.systemTemp.createTempSync();
+      addTearDown(() => dir.deleteSync(recursive: true));
+
+      expect(libraryRefusal(dir.path, existing: false), isNull);
+    });
+
+    test('and one not made yet, beside one that is', () {
+      // Making a directory is reasonable; making a path somebody mistyped
+      // four levels deep is how a library ends up somewhere nobody looks
+      // for it again.
+      final dir = Directory.systemTemp.createTempSync();
+      addTearDown(() => dir.deleteSync(recursive: true));
+
+      expect(libraryRefusal('${dir.path}/mirror', existing: false), isNull);
+      expect(
+        libraryRefusal('${dir.path}/a/b/c/mirror', existing: false),
+        contains('to put it in'),
+      );
+    });
+
+    test('an empty path changes nothing, in either direction', () {
+      expect(libraryRefusal('  ', existing: true), contains('path is needed'));
+      expect(libraryRefusal('', existing: false), contains('path is needed'));
+    });
+  });
+
   test('the unit runs what Start runs', () {
     // The whole reason the server is a child process rather than something
     // embedded here. A unit whose ExecStart has drifted from what the console

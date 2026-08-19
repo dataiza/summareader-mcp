@@ -370,6 +370,46 @@ abstract interface class Owned {
 ///
 /// Holds a child process when it started one, and holds nothing at all when a
 /// unit is installed — in which case every method here is a systemctl call.
+/// Why a library path cannot be used, or null when it can.
+///
+/// Checked before anything is stopped, for the same reason a rebind is: a
+/// typo should cost a sentence, not a running server. The mirror's own
+/// complaint would arrive later, in a log, as a SQLite error about a file.
+///
+/// The two modes fail differently, which is why this is not one check. An
+/// existing library has to *be* there — naming one that is not is how
+/// somebody ends up staring at an empty window wondering where their articles
+/// went, when nothing was ever opened. A new one must *not* be there yet, or
+/// "its own copy" quietly adopts a library something else is filling, and two
+/// cursors start fighting over one file.
+String? libraryRefusal(String path, {required bool existing}) {
+  final trimmed = path.trim();
+  if (trimmed.isEmpty) return 'A path is needed. Nothing has been changed.';
+
+  if (existing) {
+    if (!File(trimmed).existsSync()) {
+      return 'No file at $trimmed. An existing library is opened, never '
+          'created — check the path, or choose to keep its own copy.';
+    }
+    return null;
+  }
+
+  final directory = Directory(trimmed);
+  final library = File('$trimmed/library.sqlite');
+  if (library.existsSync()) {
+    return 'There is already a library at ${library.path}. Choose "an '
+        'existing library" to open it, or a directory that has none.';
+  }
+  // The parent has to exist. Creating one directory is reasonable; creating a
+  // mistyped path four levels deep is how a library ends up somewhere nobody
+  // looks for it again.
+  if (!directory.existsSync() && !directory.parent.existsSync()) {
+    return 'Nothing at ${directory.parent.path} to put it in. Nothing has '
+        'been changed.';
+  }
+  return null;
+}
+
 class Supervisor implements Owned {
   Supervisor({
     required this.configFile,

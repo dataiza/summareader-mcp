@@ -21,3 +21,7 @@ dist/
 # single most complete plaintext copy of it that exists — not something to
 # hand to a git remote.
 .cache/
+
+# Flutter writes these when a golden test fails. They are the failure, not the
+# artefact — regenerating the golden is what fixes it.
+console/test/failures/

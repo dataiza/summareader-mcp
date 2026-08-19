@@ -155,7 +155,30 @@ class MirrorConfig {
   /// A file that will not parse is a refusal naming the error and the path:
   /// the alternative is overwriting somebody's typo'd config with two keys and
   /// nothing else in it.
-  void saveBind({required String host, required int port}) {
+  void saveBind({required String host, required int port}) =>
+      save({'host': host, 'port': port});
+
+  /// Where the library is, and whether this mirror owns it.
+  ///
+  /// Two different keys, because they are two different arrangements and the
+  /// difference is the whole question the switch asks. `library` is somebody
+  /// else's file — the app's own — opened read-only, which is why it needs no
+  /// server, token or master key. `cache_dir` is this mirror's own copy, which
+  /// it fills by pulling and decrypting, and which does not exist until it
+  /// does. Setting either clears the other: a config naming both would have
+  /// two answers to "which library", and `config.py` would take the read-only
+  /// one, which is not what somebody asking for a new one meant.
+  void saveLibrary({String? library, String? cacheDir}) => save(
+        library != null
+            ? {'library': library, 'cache_dir': null}
+            : {'cache_dir': cacheDir, 'library': null},
+      );
+
+  /// Writes these keys and leaves the rest of the file exactly as it was.
+  ///
+  /// A null value removes a key rather than writing `null` into it, because
+  /// `config.py` reads a present-but-empty value as a value.
+  void save(Map<String, Object?> updates) {
     final handle = File(file);
     var stored = <String, dynamic>{};
     if (handle.existsSync()) {
@@ -173,8 +196,16 @@ class MirrorConfig {
       // order somebody wrote it, with these two appended the first time.
       stored = decoded;
     }
-    stored['host'] = host;
-    stored['port'] = port;
+    for (final entry in updates.entries) {
+      if (entry.value == null) {
+        stored.remove(entry.key);
+        // The comment beside it goes too, or the file explains a key it no
+        // longer has.
+        stored.remove('_${entry.key}');
+      } else {
+        stored[entry.key] = entry.value;
+      }
+    }
     final temp = File('$file.writing');
     temp.parent.createSync(recursive: true);
     temp.writeAsStringSync(

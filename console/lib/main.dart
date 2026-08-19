@@ -90,7 +90,12 @@ class ConsoleScreen extends StatefulWidget {
 }
 
 class _ConsoleScreenState extends State<ConsoleScreen> {
-  late final MirrorConfig _config = widget.options.configuration;
+  // Not final: moving the library rewrites the file this was read from, and
+  // everything below — which library is open, what the unit says, where the
+  // server is told to look — has to follow it rather than describe the file
+  // as it was when the window opened.
+  MirrorConfig _config = _nothing;
+  static final _nothing = MirrorConfig.forLibrary('');
   late final Fading _fading = Fading(
     (message) => setState(() => _message = message),
   );
@@ -124,6 +129,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   @override
   void initState() {
     super.initState();
+    _config = widget.options.configuration;
     _open();
     if (_local) {
       // Flag first, then whatever the config file and the environment say —
@@ -393,6 +399,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
             ? const []
             : bindHosts(_supervisor!.host, _lan),
         configRows: _configRows(),
+        libraryPath: _config.remote ?? _libraryPath,
+        ownsLibrary: !_config.readsALocalLibrary,
         results: _results,
         local: _local,
         // Linux only, and absent rather than greyed out elsewhere: systemd is
@@ -409,12 +417,77 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       onAtLogin: _setAtLogin,
       onBind: (host) => unawaited(_rebind(host, _supervisor!.port)),
       onPort: _setPort,
+      onLibrary: _local ? _setLibrary : null,
     );
   }
 
+  /// What the field shows: the directory when this mirror owns the library,
+  /// the file itself when it is reading somebody else's. Those are the two
+  /// things the config actually holds, and showing one while writing the
+  /// other is how a path stops round-tripping.
+  String get _libraryPath =>
+      _config.readsALocalLibrary ? _config.database : _config.cacheDir;
+
+  /// Moves the library, or changes who owns it.
+  ///
+  /// Validated before anything is stopped, like a rebind and for the same
+  /// reason: a typo should cost a sentence, not a server. The config is
+  /// written first so a refusal leaves the running mirror on the library it
+  /// already had, and the unit is rewritten when there is one, because it
+  /// carries SUMMAREADER_MCP_CACHE and a unit that disagrees with the config
+  /// brings the old library back at the next login.
+  Future<void> _setLibrary(String path, {required bool existing}) =>
+      _act('moving', () async {
+        final trimmed = path.trim();
+        if (trimmed == _libraryPath && existing == _config.readsALocalLibrary) {
+          return '';
+        }
+        final refused = libraryRefusal(trimmed, existing: existing);
+        if (refused != null) return refused;
+
+        _config.saveLibrary(
+          library: existing ? trimmed : null,
+          cacheDir: existing ? null : trimmed,
+        );
+
+        final supervisor = _supervisor;
+        final wasRunning = await supervisor?.running() ?? false;
+        await supervisor?.stop();
+        _config = widget.options.configuration;
+        _library?.close();
+        _open();
+        final previous = _supervisor;
+        if (previous != null) {
+          // Rebuilt rather than mutated: it holds the cache directory it was
+          // given, and that is exactly what has just moved.
+          _supervisor = Supervisor(
+            configFile: _config.file,
+            cacheDir: _config.cacheDir,
+            host: previous.host,
+            port: previous.port,
+            bearerToken: _config.bearerToken,
+          );
+        }
+        unawaited(_search(_query.text));
+        if (serviceInstalled()) {
+          await installService(
+            renderUnit(
+              host: _config.host,
+              port: _config.port,
+              configFile: _config.file,
+              cacheDir: _config.cacheDir,
+            ),
+          );
+        } else if (wasRunning) {
+          await _supervisor?.start();
+        }
+        return existing
+            ? 'reading $trimmed, read-only'
+            : 'its own library, in $trimmed';
+      });
+
   List<(String, String)> _configRows() => [
     ('File', _config.file),
-    ('Library', _config.remote ?? _config.database),
     ('Sync server', _config.server ?? '—'),
     ('Name', _config.instanceName ?? '(unset)'),
     // Never the token itself. A window that shows a credential is a window
