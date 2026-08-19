@@ -1,0 +1,268 @@
+/// The console, without a display.
+///
+/// Everything here is a question that goes wrong silently: the argv a unit
+/// runs, who owns the server, what closing the window does to it, and which
+/// numbers reach the pane. A wrong ExecStart is a service that fails at the
+/// next login in a log nobody has open, so it is asserted against the bytes
+/// rather than by installing one and hoping.
+library;
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:summareader_mcp_console/src/mirror.dart';
+
+const exe = ['/home/you/.local/bin/summareader-mcp'];
+
+void main() {
+  test('the unit runs what Start runs', () {
+    // The whole reason the server is a child process rather than something
+    // embedded here. A unit whose ExecStart has drifted from what the console
+    // starts is two different servers wearing one name.
+    final unit = renderUnit(
+      host: '127.0.0.1',
+      port: 8100,
+      configFile: '/home/you/.config/summareader-mcp/summareader-mcp.json',
+      cacheDir: '/home/you/.cache/summareader-mcp',
+      exe: exe,
+    );
+    final argv = serveArgv('127.0.0.1', 8100, exe: exe).join(' ');
+
+    expect(unit, contains('ExecStart=$argv\n'));
+    expect(argv, contains('--transport=http'));
+    for (final wanted in [
+      'Environment="SUMMAREADER_MCP_CONFIG='
+          '/home/you/.config/summareader-mcp/summareader-mcp.json"',
+      'Environment="SUMMAREADER_MCP_CACHE=/home/you/.cache/summareader-mcp"',
+      'ReadWritePaths=/home/you/.cache/summareader-mcp',
+      'NoNewPrivileges=true',
+      'ProtectSystem=strict',
+      'WantedBy=default.target',
+    ]) {
+      expect(unit, contains(wanted));
+    }
+
+    // And what the console reads back on the next launch, so it reopens on
+    // the server that is running rather than on its own defaults.
+    expect(unitBind(unit), ('127.0.0.1', 8100));
+    expect(unitBind('[Service]\nExecStart=summareader-mcp serve\n'), isNull);
+  });
+
+  test('a unit owns the server and the console only asks it', () {
+    // One owner at a time. With a unit installed, a console that started a
+    // child of its own would put a second server on one library: both
+    // pulling, both advancing the same cursor, and the second failing to
+    // bind — which from here reads as "Start did nothing".
+    final managed = startCommand(
+      managed: true,
+      host: '127.0.0.1',
+      port: 8100,
+      exe: exe,
+    );
+    expect(managed, [
+      'systemctl',
+      '--user',
+      'start',
+      'summareader-mcp.service',
+    ]);
+    expect(managed, isNot(contains(exe.first)));
+
+    expect(
+      startCommand(managed: false, host: '127.0.0.1', port: 8100, exe: exe),
+      serveArgv('127.0.0.1', 8100, exe: exe),
+    );
+  });
+
+  test(
+    'the supervisor never spawns a child when a unit owns the server',
+    () async {
+      // The same rule as startCommand, asserted at the seam that could break
+      // it: nothing else can tell the difference until the library is already
+      // being written by two processes.
+      final asked = <List<String>>[];
+      final supervisor = Supervisor(
+        configFile: '/tmp/c.json',
+        cacheDir: '/tmp',
+        host: '127.0.0.1',
+        port: 8100,
+        owner: () => true,
+        manager: (args) async => asked.add(args),
+      );
+
+      await supervisor.start();
+      await supervisor.stop();
+      expect(asked, [
+        ['start', 'summareader-mcp.service'],
+        ['stop', 'summareader-mcp.service'],
+      ]);
+      supervisor.close();
+    },
+  );
+
+  group('closing the console', () {
+    test('a child started here dies here', () async {
+      // Otherwise it holds the port and the library after the window is gone,
+      // and the next Start fails to bind.
+      final child = _Fake(managed: false);
+      await stopOnClose(child);
+      expect(child.stopped, isTrue);
+    });
+
+    test('a service is left alone', () async {
+      // Outliving the window is the whole reason somebody installed a unit.
+      final service = _Fake(managed: true);
+      await stopOnClose(service);
+      expect(service.stopped, isFalse);
+    });
+
+    test('a console with nothing to supervise closes quietly', () async {
+      // --remote and --library never build one.
+      await stopOnClose(null);
+    });
+  });
+
+  test('the unit is looked for where systemd looks', () {
+    expect(
+      unitPath({'XDG_CONFIG_HOME': '/tmp/xdg'}),
+      '/tmp/xdg/systemd/user/summareader-mcp.service',
+    );
+    expect(
+      unitPath({'HOME': '/home/you'}),
+      '/home/you/.config/systemd/user/summareader-mcp.service',
+    );
+    expect(serviceInstalled({'XDG_CONFIG_HOME': '/tmp/nothing-here'}), isFalse);
+  });
+
+  test('the scraper reads a named mirror\'s metrics too', () {
+    // Every sample is labelled as soon as a name is configured, so a parser
+    // matching only a bare name would read every number as missing on exactly
+    // the installations that bothered to name themselves — and a pane showing
+    // "0 pulls" for ever looks like a server that has never synced.
+    const text =
+        '# TYPE summareader_mcp_pulls_total counter\n'
+        'summareader_mcp_pulls_total{instance="MCP mirror"} 14\n'
+        'summareader_mcp_pull_failures_total{instance="MCP mirror"} 2\n'
+        'summareader_mcp_last_pull_age_seconds{instance="MCP mirror"} 240\n';
+    final scraped = Scraped.fromMetrics(text);
+    expect(scraped.pulls, 14);
+    expect(scraped.failures, 2);
+    expect(scraped.lastPullAge, 240);
+
+    expect(
+      gauge('summareader_mcp_pulls_total 3\n', 'summareader_mcp_pulls_total'),
+      3,
+    );
+    // A longer name that merely starts the same way is a different metric,
+    // and reading it as this one is a wrong number rather than a missing one.
+    expect(
+      gauge('summareader_mcp_items_summarized 7\n', 'summareader_mcp_items'),
+      isNull,
+    );
+    expect(gauge('', 'summareader_mcp_items'), isNull);
+  });
+
+  test('the pane shows what the library holds and how the syncing went', () {
+    final shown = Map.fromEntries(
+      formatStats(
+        const {
+          'items': 1284,
+          'unread': 37,
+          'summarized': 1190,
+          'bodies': 1102,
+          'sources': 9,
+        },
+        '418',
+        const Scraped(failures: 0, lastPullAge: 90),
+      ).map((pair) => MapEntry(pair.$1, pair.$2)),
+    );
+
+    expect(shown['Articles'], '1284');
+    expect(shown['Unread'], '37');
+    expect(shown['Summarized'], '1190');
+    expect(shown['With text'], '1102');
+    expect(shown['Sources'], '9');
+    expect(shown['Cursor'], '418');
+    expect(shown['Last pull'], '1 minute ago');
+    // Zero failures is worth printing: "0" is the reassurance, and a dash
+    // reads as "not measured".
+    expect(shown['Failures'], '0');
+
+    final quiet = Map.fromEntries(
+      formatStats(const {}, null).map((p) => MapEntry(p.$1, p.$2)),
+    );
+    expect(quiet['Articles'], '0');
+    expect(quiet['Last pull'], 'never');
+    expect(quiet['Failures'], '—');
+  });
+
+  test('how long ago, in the roughest terms that are still true', () {
+    expect(ago(null), 'never');
+    expect(ago(12), 'just now');
+    expect(ago(3599), '59 minutes ago');
+    expect(ago(3600), '1 hour ago');
+    expect(ago(172800), '2 days ago');
+  });
+
+  test('the status line says who is running it', () {
+    expect(
+      statusLine(running: true, url: 'http://127.0.0.1:8100', managed: true),
+      'Running on http://127.0.0.1:8100 (systemd)',
+    );
+    expect(
+      statusLine(running: true, url: 'http://127.0.0.1:8100', managed: false),
+      'Running on http://127.0.0.1:8100',
+    );
+    expect(
+      statusLine(running: false, url: 'http://127.0.0.1:8100', managed: false),
+      startsWith('Not running'),
+    );
+  });
+
+  test('the console asks an address it can actually reach', () {
+    // 0.0.0.0 is a decision about what to accept, not a place to connect to:
+    // a server bound there is up and answering, and a console polling
+    // http://0.0.0.0:8100 shows it as down on some stacks and hangs on others.
+    expect(reachable('0.0.0.0', 8100), 'http://127.0.0.1:8100');
+    expect(reachable('::', 8100), 'http://127.0.0.1:8100');
+    expect(reachable('192.168.1.24', 8100), 'http://192.168.1.24:8100');
+    expect(reachable('::1', 8100), 'http://[::1]:8100');
+  });
+
+  test('the mirror is found by the environment before anything else', () {
+    expect(
+      launcher(environment: {'SUMMAREADER_MCP_EXE': '/opt/summareader-mcp'}),
+      ['/opt/summareader-mcp'],
+    );
+    // Nothing beside the console and nothing named: the bare name, resolved
+    // on PATH, which is what a checkout with the package installed has.
+    expect(launcher(environment: const {}, besideMe: null), isNotEmpty);
+  });
+
+  test('a mirror it does not hold says so in a sentence', () {
+    // A greyed-out button explains nothing, and the reader is left wondering
+    // what they broke.
+    final remote = refusal(remote: 'http://mirror.local:8100');
+    expect(remote, contains('http://mirror.local:8100'));
+    expect(remote, contains('Start, Stop and Pull'));
+
+    expect(refusal(library: '/home/you/library.sqlite'), contains('read-only'));
+    expect(refusal(incomplete: 'the master key'), contains('the master key'));
+    expect(refusal(), isNull);
+    // --remote wins over the others: it is the mode the console is in, and
+    // the sentence has to be about that one.
+    expect(
+      refusal(remote: 'http://x', incomplete: 'the master key'),
+      contains('http://x'),
+    );
+  });
+}
+
+class _Fake implements Owned {
+  _Fake({required this.managed});
+
+  @override
+  final bool managed;
+
+  bool stopped = false;
+
+  @override
+  Future<void> stop() async => stopped = true;
+}

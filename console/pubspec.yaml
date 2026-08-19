@@ -1,0 +1,49 @@
+name: summareader_mcp_console
+description: The mirror in a window, for the machine that holds the library.
+publish_to: none
+version: 0.2.0
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # The library file, read from here for the same reason the Python window
+  # read it: the counts and the search box are questions about a file this
+  # machine already has, and asking the server for them would be a new
+  # endpoint on a server that is not changing.
+  sqlite3: ^2.4.0
+  # Bundles libsqlite3 into the built application. Without it the console
+  # depends on whatever the machine happens to have, which on Windows and
+  # macOS is nothing.
+  sqlite3_flutter_libs: ^0.5.24
+  # /health and /metrics, which are the two things only the running process
+  # knows. Ten lines of dart:io HttpClient would also do it; this one is
+  # already in the app's own lock file and handles the timeouts.
+  http: ^1.2.0
+
+  # Vendored, not a git dependency: the token on the build machine cannot read
+  # the app's repository metadata, so a `git:` dependency would need a
+  # credential nobody has. scripts/sync-ui.sh re-copies it.
+  summareader_ui:
+    path: packages/summareader_ui
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  fonts:
+    # The app's own two faces, copied beside the vendored package for the same
+    # reason it is vendored. A console in the platform's default font is a
+    # console that looks like something else.
+    - family: Caprasimo
+      fonts:
+        - asset: assets/fonts/Caprasimo-Regular.ttf
+    - family: Figtree
+      fonts:
+        - asset: assets/fonts/Figtree-Variable.ttf

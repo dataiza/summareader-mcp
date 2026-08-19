@@ -24,6 +24,17 @@ dev = ["pytest>=8", "pytest-asyncio>=0.24"]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# What is and is not Python here. The wheel is the package and nothing else;
+# the sdist would otherwise sweep up console/, which is a Flutter application
+# of its own — a hundred megabytes of build directory and a Dart lock file in
+# a Python distribution, and pip would install none of it. It is built and
+# shipped by `flutter build`, not by this.
+[tool.hatch.build.targets.wheel]
+packages = ["summareader_mcp"]
+
+[tool.hatch.build.targets.sdist]
+exclude = ["console", "docs", "build", "dist"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

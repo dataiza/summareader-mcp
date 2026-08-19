@@ -23,7 +23,7 @@ datas += collect_data_files("textual")
 hiddenimports = (
     collect_submodules("textual.widgets")
     + collect_submodules("uvicorn")
-    + ["summareader_mcp.tui", "summareader_mcp.gui"]
+    + ["summareader_mcp.tui"]
 )
 
 analysis = Analysis(
@@ -34,11 +34,14 @@ analysis = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
-    # tkinter is not excluded any more: the `gui` subcommand is built on it,
-    # and a frozen bundle without it is a window that only exists in a
-    # checkout. It is in the standard library, so this costs the toolkit's own
-    # shared libraries and nothing in the dependency list.
-    excludes=["pytest", "IPython"],
+    # tkinter is excluded again. The window that needed it is gone — the
+    # console is a Flutter application in console/, built and shipped
+    # separately — and nothing left in this package draws anything, so the
+    # toolkit's shared libraries would be ten megabytes of a download that
+    # never opens a display. console/ is not named anywhere in this file and
+    # cannot arrive by accident: the analysis starts at __main__.py and
+    # follows imports, and nothing in Python imports Dart.
+    excludes=["pytest", "IPython", "tkinter"],
     noarchive=False,
 )
 pyz = PYZ(analysis.pure)
