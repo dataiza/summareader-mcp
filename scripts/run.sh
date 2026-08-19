@@ -2,6 +2,7 @@
 # Runs the MCP server in the foreground.
 #
 #   scripts/run.sh              # stdio, which is how a local MCP client starts one
+#   scripts/run.sh gui          # the desktop console, which is a Flutter app
 #   scripts/run.sh serve --transport=http --port=8100
 #   scripts/run.sh search rust  # or any other subcommand
 #   scripts/run.sh --docker     # needs Docker, and nothing else
@@ -45,6 +46,41 @@ fi
 # somebody just filled in.
 export SUMMAREADER_MCP_CONFIG="${SUMMAREADER_MCP_CONFIG:-$PWD/summareader-mcp.local.json}"
 export SUMMAREADER_MCP_CACHE="${SUMMAREADER_MCP_CACHE:-$PWD/.cache}"
+
+# The console is a Flutter application in console/, not a subcommand — the
+# window that used to be one was Tk inside this package and is gone. `gui` is
+# kept as the spelling because it is what somebody types, and because a script
+# that answers "no such subcommand" to the obvious word is a script that knows
+# the answer and refuses to say it.
+#
+# The exports above matter here: the console reads the same two variables, so
+# `run.sh gui` opens the library `run.sh status` describes rather than the one
+# in the home directory. SUMMAREADER_MCP_EXE is how it finds the mirror to
+# start — it is a separate program now, and in a checkout the console has no
+# way to guess that.
+if [ "${1:-}" = "gui" ]; then
+  shift
+  export SUMMAREADER_MCP_EXE="${SUMMAREADER_MCP_EXE:-$PWD/.venv/bin/summareader-mcp}"
+
+  # A release build if one has been made, because it starts instantly and
+  # needs no toolchain. Otherwise the development run, which needs Flutter.
+  case "$(uname -s)" in
+    Darwin) bundle="console/build/macos/Build/Products/Release/summareader_mcp_console.app/Contents/MacOS/summareader_mcp_console"; device=macos ;;
+    *)      bundle="console/build/linux/x64/release/bundle/summareader_mcp_console"; device=linux ;;
+  esac
+
+  if [ -x "$bundle" ]; then
+    exec "$bundle" "$@"
+  fi
+  command -v flutter >/dev/null || {
+    echo "No Flutter, and no console built yet." >&2
+    echo "  cd console && flutter build $device --release" >&2
+    echo "…or install Flutter 3.47 and run this again." >&2
+    exit 1
+  }
+  cd console
+  exec flutter run -d "$device" --release "$@"
+fi
 
 # The virtualenv if there is one, so a checkout runs without being installed.
 if [ -x .venv/bin/summareader-mcp ]; then

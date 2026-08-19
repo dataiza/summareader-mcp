@@ -250,7 +250,7 @@ and whether Python of the right version is on the machine:
 | A model, over a port | `./scripts/run.sh serve --transport=http` | `docker compose up -d` |
 | It back after a reboot | `./scripts/install.sh` | `./scripts/install.sh --docker` |
 | To read it yourself | `./scripts/run.sh ui` | `./scripts/run.sh ui` — on the host, against the same `./.cache` the container mounts |
-| To start and watch it from a window | `cd console && flutter run -d linux` | — a container has no display; the console runs on the host |
+| To start and watch it from a window | `./scripts/run.sh gui` | — a container has no display; the console runs on the host |
 | To read a mirror on another box | `./scripts/run.sh --remote http://box:8100 …` | same — it is the port that answers |
 | No Python on the machine | `./scripts/freeze.sh`, then `./dist/summareader-mcp` | any of the above |
 
@@ -464,8 +464,19 @@ than merely unbuilt.
 ### 7. The desktop console
 
 ```sh
+./scripts/run.sh gui                        # the short way, from a checkout
 cd console && flutter run -d linux          # or: flutter build linux --release
 ```
+
+`run.sh gui` is a convenience and not a subcommand — the console is a separate
+program, and the `gui` subcommand that used to be part of this package is
+gone. It runs the release build when one exists and falls back to
+`flutter run` when it does not, and it hands the console the same
+`SUMMAREADER_MCP_CONFIG` and `SUMMAREADER_MCP_CACHE` the other `run.sh`
+commands use — so the window opens on the library `./scripts/run.sh status`
+describes, rather than on whatever is in the home directory. It also sets
+`SUMMAREADER_MCP_EXE` to the checkout's own `summareader-mcp`, which is how
+the console knows what to start.
 
 ![The console: status, the counts, the buttons, the configuration panel and the search box](docs/console.png)
 
