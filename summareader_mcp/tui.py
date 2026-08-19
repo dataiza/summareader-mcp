@@ -84,7 +84,8 @@ class LibraryUI(App[int]):
         table = self.query_one("#results", DataTable)
         table.add_columns("", "Date", "Source", "Title")
         self.title = "SummaReader"
-        self.sub_title = str(self._config.database)
+        # Which library this is: a path, or the address it is being read from.
+        self.sub_title = self._config.remote or str(self._config.database)
         self._run_search("")
         self.query_one("#query", Input).focus()
 
@@ -206,8 +207,11 @@ class LibraryUI(App[int]):
         self.query_one("#status", Static).update(message)
 
 
-def run_ui(config: Config) -> int:
-    store = open_store(config.database, read_only=config.reads_a_local_library)
+def run_ui(config: Config, store=None) -> int:
+    """The library, in a terminal. `store` is given when it is a remote one."""
+    store = store or open_store(
+        config.database, read_only=config.reads_a_local_library
+    )
     try:
         LibraryUI(store, config).run()
     finally:

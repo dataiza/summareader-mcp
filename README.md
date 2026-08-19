@@ -112,6 +112,36 @@ summareader-mcp --library ~/.local/share/sk.dataiza.summareader/summareader.sqli
 The file is opened **read-only**; the app can be running against it at the same
 time. Every command and every MCP tool works the same way.
 
+## Reading a mirror that is somewhere else
+
+The other direction: the library stays on the box allowed to hold it, and a
+terminal anywhere else reads it over that box's HTTP transport.
+
+```sh
+export SUMMAREADER_MCP_TOKEN=…                 # the mirror's http_token
+summareader-mcp --remote http://box:8100 search "borrow checker"
+summareader-mcp --remote http://box:8100 ui
+```
+
+`--remote` needs no config file, no device token and no master key — it holds
+no library, so it decrypts nothing. `/mcp` is added to the address if you leave
+it off. This is the point of it: **one host holds the plaintext, and every
+reader borrows it** rather than each one keeping a copy that has to be trusted,
+encrypted and cleaned up.
+
+Not to be confused with `server` in the config file, which is the sync server
+this mirrors *from*. `--remote` is a mirror it reads.
+
+The terminal interface is a client like any other under `--remote`: a separate
+process, talking to a server that is a separate process, over the same tools a
+model would use. It holds one MCP session open for as long as it runs rather
+than dialling per search — on a thread of its own, because Textual is already
+running an event loop and a second one cannot nest inside it.
+
+Reading only, and that is the shape of the thing rather than a gap: `--remote`
+speaks the MCP tools, and the tools read. `pull` and `serve` refuse under it —
+both need the master key, which a reader has none of.
+
 ## Running it
 
 Six ways to start it, and what separates them is who is on the other end: a
@@ -135,6 +165,21 @@ it can read everything.**
 None of this is needed to read a library that is already on the machine; see
 [above](#reading-a-library-that-is-already-here), which needs no server, no
 token and no key.
+
+Which one, in one table — the columns are who is on the other end, and whether
+Python of the right version is on the machine:
+
+| You want | Native | Docker |
+|---|---|---|
+| A model, over stdio | `./scripts/run.sh` | — a container is not a subprocess |
+| A model, over a port | `./scripts/run.sh serve --transport=http` | `docker compose up -d` |
+| It back after a reboot | `./scripts/install.sh` | `./scripts/install.sh --docker` |
+| To read it yourself | `summareader-mcp ui` | `./scripts/run.sh ui` — on the host, against the same `./.cache` the container mounts |
+| To read a mirror on another box | `summareader-mcp --remote http://box:8100 …` | same — it is the port that answers |
+| No Python on the machine | `./scripts/freeze.sh`, then `dist/summareader-mcp` | any of the above |
+
+There is no desktop window in either column — the reading interface is the
+terminal one, and [§2](#2-the-terminal-interface) is what it looks like.
 
 ### 1. As an MCP server
 
@@ -165,6 +210,13 @@ at startup — the encryption ends at this process, which is what it is for and
 why it needs a boundary of its own. `/health` never needs the token: it reports
 whether the process is up and nothing about what it holds, and a health check
 that needs a secret breaks the day the secret rotates.
+
+**Until now the token guarded `/metrics` and nothing else.** The MCP endpoint —
+every tool, the whole library — answered anyone who could reach the port, while
+this paragraph, the unit file and the installer all said the token was what made
+that port safe. It now guards the whole app, `/health` excepted. If you have
+been reaching your mirror over HTTP without sending a bearer token, that is the
+thing that will stop working, and it should have been stopping all along.
 
 ### 2. The terminal interface
 
@@ -247,23 +299,27 @@ a plaintext copy of the library, so it belongs to one person and needs no root
 to install or remove. `scripts/summareader-mcp.service` is the definition the
 installer fills in.
 
-**The unit now passes `--host=127.0.0.1`, where it used to bind every
-interface.** That is a deliberate break, and it is the kind that arrives
-looking like a bug: if you reach your mirror from another machine on your LAN,
-it will stop answering after the next install, and nothing will say why. Put it
-back explicitly, and set `http_token` before you do:
+The port and the address are the installer's, not the unit file's — edit the
+installed copy and the next install overwrites it:
 
-```ini
-ExecStart=… serve --transport=http --host=0.0.0.0 --port=8100
+```sh
+PORT=8300 ./scripts/install.sh                     # somewhere else
+HOST=0.0.0.0 PORT=8300 ./scripts/install.sh        # reachable from the LAN
 ```
 
-The old default was bind-everything by accident rather than by choice, and a
-user service that serves an entire library in plaintext to the network, with
-the token optional, is not something anybody decided on purpose.
+**The unit passes `--host=127.0.0.1` unless `HOST` says otherwise, where it
+used to bind every interface.** That is a deliberate break, and it is the kind
+that arrives looking like a bug: if you reach your mirror from another machine
+on your LAN, it will stop answering after the next install, and nothing will
+say why — `HOST=0.0.0.0` is how you say you meant it. The old default was
+bind-everything by accident rather than by choice, and a user service that
+serves an entire library in plaintext to the network, with the token optional,
+is not something anybody decided on purpose.
 
-The installer refuses to start without a config and warns when `http_token` is
-unset, because that port serves the whole library in plaintext to anything that
-can reach it. The Docker path installs no unit: `restart: unless-stopped` and
+The installer refuses to start without a config, and **refuses a `HOST` wider
+than loopback while `http_token` is unset** — that address serves the whole
+library in plaintext to anything that can route to it. On loopback the same
+missing token is a warning rather than a refusal. The Docker path installs no unit: `restart: unless-stopped` and
 an enabled `docker.service` already restart the container after a reboot.
 
 Running it as a service rather than a container changes what `server` in the
@@ -323,6 +379,32 @@ Support/summareader-mcp/` and `~/Library/Caches/summareader-mcp/` on macOS, and
 win — which is how the container keeps `/config` and `/cache`, how the service
 unit points at one person's own directories, and how `scripts/run.sh` points at
 the copy beside this repository.
+
+### Starting fresh
+
+The cache is one file, `library.sqlite`, in the cache directory above. Nothing
+else has to be undone: delete it and the next run replays the log from zero.
+
+```sh
+systemctl --user stop summareader-mcp    # or: docker compose down
+rm ~/.cache/summareader-mcp/library.sqlite*
+summareader-mcp pull                     # rebuilds, then say what arrived
+```
+
+The `*` matters — WAL leaves `-wal` and `-shm` beside the database, and a
+stale pair against a new file is a corrupt read rather than a clean start.
+Stopping first is for the same reason: a running server holds the file open.
+
+The config file is *not* in the cache directory and is not touched by this,
+so the server, the token and the keys survive. Deleting the database also
+deletes the sync cursor it keeps, which is exactly what makes the next `pull`
+a full one rather than an incremental one.
+
+In a container the same file is `./.cache/library.sqlite` beside the compose
+file, deleted from the host.
+
+Under `--library` this does not apply and must not be done: that file is the
+app's own library, not a cache, and this program only ever reads it.
 
 ## Testing it
 

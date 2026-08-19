@@ -69,6 +69,9 @@ class Config:
     http_token: str | None = None
     fetch_bodies: bool = True
     library: Path | None = None
+    #: A mirror's address, when this process reads one over the port instead of
+    #: holding a library of its own. See `for_remote`.
+    remote: str | None = None
 
     @property
     def database(self) -> Path:
@@ -87,6 +90,24 @@ class Config:
             master_key=b"",
             cache_dir=Path(path).parent,
             library=Path(path),
+        )
+
+    @classmethod
+    def for_remote(cls, url: str, *, token: str | None = None) -> Config:
+        """A reader with no library of its own: it all comes over the port.
+
+        No sync server, no device token and no master key, because nothing here
+        decrypts anything — the mirror on the other end did that, and holding
+        the plaintext is the whole of what it is for. `http_token` is the only
+        credential a reader needs, and it is the same one the server checks.
+        """
+        return cls(
+            server="",
+            token="",
+            master_key=b"",
+            cache_dir=Path(),
+            http_token=token,
+            remote=url,
         )
 
     @property

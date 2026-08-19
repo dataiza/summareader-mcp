@@ -9,6 +9,7 @@ can run in a terminal is a search you can check.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +18,7 @@ from . import __version__
 from .config import Config, ConfigError, default_config_path
 from .report import render
 from .store import Store, open_store
+from .store.remote import RemoteError, RemoteStore
 from .tools import BadSince, parse_since
 
 
@@ -34,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.run(args)
-    except (ConfigError, FileNotFoundError) as error:
+    except (ConfigError, FileNotFoundError, RemoteError) as error:
         print(f"summareader-mcp: {error}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:
@@ -51,6 +53,14 @@ def _parser() -> argparse.ArgumentParser:
         "--config",
         metavar="FILE",
         help=f"config file (default: {default_config_path()})",
+    )
+    parser.add_argument(
+        "--remote",
+        metavar="URL",
+        help="read a mirror somebody else is running, over its http transport "
+        "— e.g. http://box:8100. Needs no config, no keys and no library of "
+        "its own; the token comes from SUMMAREADER_MCP_TOKEN. Not --server, "
+        "which in the config file means the sync server this mirrors *from*",
     )
     parser.add_argument(
         "--library",
@@ -161,8 +171,13 @@ def _status(args) -> int:
         counts = store.counts()
         cursor = store.setting("sync.cursor")
         instance = store.setting("sync.instanceId")
-    print(f"library   {config.database}")
-    if config.reads_a_local_library:
+    print(f"library   {config.remote or config.database}")
+    if config.remote:
+        # Everything below is the mirror's own bookkeeping, and this process is
+        # not the mirror. The cursor is a fact about the library, so it stays.
+        print("mode      reading a mirror over its http transport")
+        print(f"cursor    {cursor or 0}")
+    elif config.reads_a_local_library:
         print("mode      reading the app's own library, read-only")
     else:
         print(f"server    {config.server}")
@@ -200,19 +215,37 @@ def _serve(args) -> int:
 def _ui(args) -> int:
     from .tui import run_ui
 
-    return run_ui(_config(args))
+    return run_ui(_config(args), _store(args) if args.remote else None)
 
 
 # ---- shared ------------------------------------------------------------
 
 
 def _config(args) -> Config:
+    if args.remote:
+        if args.run in (_serve, _pull):
+            # Both need the master key, and a reader over the port has none by
+            # design. Saying so beats "master_key is 32 bytes, not 0".
+            raise ConfigError(
+                "--remote reads a mirror; it cannot be one. Drop --remote, or "
+                "run this against the machine that holds the library."
+            )
+        return Config.for_remote(
+            args.remote, token=os.environ.get("SUMMAREADER_MCP_TOKEN")
+        )
     if args.library:
         return Config.for_library(args.library)
     return Config.load(file=args.config)
 
 
-def _store(args) -> Store:
+def _store(args):
+    """The library, wherever it is — a file here, or a mirror over there.
+
+    One seam, because everything downstream asks a store the same questions
+    and none of it cares which kind answered.
+    """
+    if args.remote:
+        return RemoteStore(args.remote, token=os.environ.get("SUMMAREADER_MCP_TOKEN"))
     config = _config(args)
     return open_store(config.database, read_only=config.reads_a_local_library)
 

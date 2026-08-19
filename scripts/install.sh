@@ -13,6 +13,7 @@
 #   CONFIG=…    the secrets file                (default ./summareader-mcp.local.json)
 #   CACHE_DIR=… the decrypted mirror            (default ~/.cache/summareader-mcp)
 #   PORT=…      what it listens on              (default 8100)
+#   HOST=…      the address it binds            (default 127.0.0.1)
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -28,6 +29,7 @@ unit_dir="$HOME/.config/systemd/user"
 config="${CONFIG:-$repo/$name.local.json}"
 cache_dir="${CACHE_DIR:-$HOME/.cache/$name}"
 port="${PORT:-8100}"
+host="${HOST:-127.0.0.1}"
 
 # In a container instead. `restart: unless-stopped` and an enabled
 # docker.service are what bring it back after a reboot, so there is no systemd
@@ -59,16 +61,16 @@ if [ "${1:-}" = "--docker" ]; then
   # A container cannot reach a sync server bound to 127.0.0.1 on the host, and
   # a service name only resolves on a shared network. Both are one edit in the
   # compose file, and both look like "the server is down" from in here.
-  host="$(sed -n 's/.*"server"[[:space:]]*:[[:space:]]*"[a-z]*:\/\/\([^:\/"]*\).*/\1/p' "$config")"
-  case "$host" in
+  sync_host="$(sed -n 's/.*"server"[[:space:]]*:[[:space:]]*"[a-z]*:\/\/\([^:\/"]*\).*/\1/p' "$config")"
+  case "$sync_host" in
     localhost|127.0.0.1)
-      echo "note: \"server\" is $host — from inside the container that is the"
+      echo "note: \"server\" is $sync_host — from inside the container that is the"
       echo "      container itself. Use the sync server's shared network and its"
       echo "      service name, or an address this host publishes." ;;
     ''|http*) ;;
     *)
       docker network ls --format '{{.Name}}' | grep -q "sync" \
-        || echo "note: \"server\" names $host; uncomment the sync network block in docker-compose.yml." ;;
+        || echo "note: \"server\" names $sync_host; uncomment the sync network block in docker-compose.yml." ;;
   esac
   exit 0
 fi
@@ -88,6 +90,26 @@ if [ ! -f "$config" ]; then
   exit 1
 fi
 
+has_http_token() {
+  grep -q '"http_token"[[:space:]]*:[[:space:]]*"[^"]\+"' "$config"
+}
+
+# Loopback is one machine's business. Anything wider publishes the whole
+# library, in plaintext, to whoever can route to this port — so that is a
+# refusal rather than the warning further down, which is about a port only
+# this host can reach.
+case "$host" in
+  127.0.0.1|::1|localhost) ;;
+  *)
+    has_http_token || {
+      echo "Refusing to bind $host without an http_token in $config." >&2
+      echo "  That address serves the entire library, in plaintext, to anyone" >&2
+      echo "  who can reach it. Set one and install again:" >&2
+      echo "    openssl rand -base64 32" >&2
+      exit 1
+    } ;;
+esac
+
 mkdir -p "$bin_dir" "$unit_dir" "$cache_dir"
 
 # Its own virtualenv, and the console script from it: a service should not
@@ -103,21 +125,22 @@ sed -e "s|@BIN@|$bin_dir/$name|g" \
     -e "s|@CONFIG@|$config|g" \
     -e "s|@CACHE@|$cache_dir|g" \
     -e "s|@PORT@|$port|g" \
+    -e "s|@HOST@|$host|g" \
     scripts/$name.service >"$unit_dir/$name.service"
 
 systemctl --user daemon-reload
 systemctl --user enable --now "$name.service"
 
-echo "listening on 127.0.0.1:$port, mirror in $cache_dir"
+echo "listening on $host:$port, mirror in $cache_dir"
 echo
-echo "  curl -fsS http://127.0.0.1:$port/health   # needs no token"
+echo "  curl -fsS http://$host:$port/health   # needs no token"
 echo "  journalctl --user -u $name -f"
 echo
 
 # The port serves the whole library in plaintext to anyone who can reach it.
 # The server says so at startup too; saying it here means it is read before
 # the thing is running rather than after.
-if ! grep -q '"http_token"[[:space:]]*:[[:space:]]*"[^"]\+"' "$config"; then
+if ! has_http_token; then
   echo "WARNING: no http_token in $config — anything that can reach the port"
   echo "         can read the entire library. Set one:"
   echo "           openssl rand -base64 32"
