@@ -6,8 +6,8 @@ decrypted copy of the library, and answers questions about it.
 It reads; it does not write. Nothing it holds ever changes, which is what
 makes it safe to point at a library you care about.
 
-Three ways in — MCP, a command line, and a terminal interface — over one set of
-functions, so they cannot answer the same question differently.
+Four ways in — MCP, a command line, a terminal interface and a window — over
+one set of functions, so they cannot answer the same question differently.
 
 ## Why it is a device and not part of the server
 
@@ -192,9 +192,9 @@ this mirrors *from*. `--remote` is a mirror it reads.
 
 ## Running it
 
-Six ways to start it, and what separates them is who is on the other end: a
-model, a person at a terminal, a shell, or nobody at all until a client
-connects. They are the same program over the same functions — the choice is
+Seven ways to start it, and what separates them is who is on the other end: a
+model, a person at a terminal, a person at a window, a shell, or nobody at all
+until a client connects. They are the same program over the same functions — the choice is
 about where it lives, not about what it can answer.
 
 Configuration is three values, whichever way: the sync server, a device token,
@@ -245,11 +245,15 @@ and whether Python of the right version is on the machine:
 | A model, over a port | `./scripts/run.sh serve --transport=http` | `docker compose up -d` |
 | It back after a reboot | `./scripts/install.sh` | `./scripts/install.sh --docker` |
 | To read it yourself | `./scripts/run.sh ui` | `./scripts/run.sh ui` — on the host, against the same `./.cache` the container mounts |
+| To start and watch it from a window | `./scripts/run.sh gui` | — a container has no display; run the window on the host |
 | To read a mirror on another box | `./scripts/run.sh --remote http://box:8100 …` | same — it is the port that answers |
 | No Python on the machine | `./scripts/freeze.sh`, then `./dist/summareader-mcp` | any of the above |
 
-There is no desktop window in either column — the reading interface is the
-terminal one, and [§2](#2-the-terminal-interface) is what it looks like.
+The window ([§7](#7-in-a-window)) is for the machine that holds the library: it
+starts and stops the server there and searches what it holds. Reading a mirror
+that lives on some other machine is the terminal interface's job over
+`--remote`, which needs no window and no display — so the two do not overlap
+and neither is a smaller version of the other.
 
 ### 1. As an MCP server
 
@@ -314,8 +318,9 @@ title:rust before:2026-08-01
 else stays words to search for, so a title with a colon in it costs a search
 rather than an error.
 
-There is no desktop window. One is planned; nothing in this repository draws
-one, and the terminal is where a person reads this mirror today.
+There is a window too, [§7](#7-in-a-window), and it is not this: the window
+starts the server and searches, and stops at the list of results. Reading an
+article is what this interface is for.
 
 The picture above is the program rather than a drawing of it —
 `scripts/screenshot.py` seeds a small library through the real store and paints
@@ -435,8 +440,10 @@ compose file has the block to uncomment.
 
 PyInstaller, driven by `summareader-mcp.spec`. One file that needs no Python on
 the machine it runs on, which is what a desktop build has to be able to hand
-over, and which serves, searches and paints the terminal interface like any
-other way of starting it. The script builds it and then runs it — `--help`, a
+over, and which serves, searches, paints the terminal interface and opens
+the window like any other way of starting it — `tkinter` is no longer excluded
+from the bundle and `summareader_mcp.gui` is named as a hidden import, because
+what PyInstaller cannot see it does not pack. The script builds it and then runs it — `--help`, a
 library created from `schema.sql`, and that same file read back through
 `--library` — because the interesting failure is not at start-up: `schema.sql`
 is a data file, and a bundle that lost it starts perfectly and fails when
@@ -446,6 +453,73 @@ Built on the machine it is built for, one platform at a time. **Only the Linux
 executable has been produced so far**; the macOS and Windows builds have to run
 on macOS and Windows, and until somebody does that they are untested rather
 than merely unbuilt.
+
+### 7. In a window
+
+```sh
+./scripts/run.sh gui                    # --host and --port, as serve takes them
+```
+
+![The window: status, the counts, the buttons, the configuration panel and the search box](docs/gui.png)
+
+For the machine that holds the library, and for the two jobs that were
+terminal-only with no good reason: keeping the server running, and asking what
+is in there. Tkinter, from the standard library — a window with six controls on
+it does not earn a toolkit that would put another hundred and fifty megabytes
+inside the frozen executable, and the import is lazy, so an interpreter built
+without Tk still runs everything else.
+
+What it shows, and what each control does:
+
+| | |
+|---|---|
+| **status line** | whether the server is answering, on which address, and whether systemd is the one running it |
+| **Library** | articles, unread, summarized, with text, sources and the cursor — read from the library file the search box has open anyway — then last pull and failures, which are not in the file because they live in the running process's memory, and are scraped from its `/metrics` with the configured `bearer_token`. `/health` is what "running" means |
+| **Start / Stop** | the server. With a user unit installed these drive `systemctl --user`; without one, Start runs a child process |
+| **Pull now** | one sync now rather than at the server's next timer — the same `Puller` the command line's `pull` runs, in this process, since WAL makes a second reader of the same file a non-event and every record applies by id |
+| **Start at login** | writes `~/.config/systemd/user/summareader-mcp.service` and enables it; unticking removes it again. It re-reads from disk afterwards, so it cannot sit ticked beside a service that failed to install. Linux only — the row is absent elsewhere |
+| **Configuration** | the config file's path and what is in it, including whether a bearer token is set. Read-only text: a window that writes somebody's master key back out is a window that can lose it |
+| **Search** | the same `Store` the command line's `search` uses, and `RemoteStore` under `--remote` — one code path, so it cannot answer differently. Date, source and title; there is no article pane, because that is [§2](#2-the-terminal-interface) |
+
+**The server is a child process, not something embedded in the window.**
+`serve` blocks, holds the master key, and is the thing being restarted — inside
+the window an unhandled traceback in the sync loop would take the window down
+with it, and the desktop path and the service path would be two pieces of code
+free to drift apart. So the window starts exactly the argv the unit's
+`ExecStart` line holds: `serve_argv()` is the one spelling of "run the server",
+the unit is rendered from it, and a test asserts the two are the same string.
+
+**One owner at a time.** With a unit installed, systemd owns the server and the
+window is a remote control for it — Start and Stop drive `systemctl --user`,
+and the window never starts a child of its own. Two servers on one library both
+pull and both advance the same cursor, and the second one simply fails to bind
+the port, which from a window reads as "Start did nothing".
+
+"Start at login" writes and removes the unit itself rather than calling
+`scripts/install.sh`. That script wants a repository, builds a virtualenv and
+runs `pip install .`; a frozen executable on somebody's desktop has none of
+those and still deserves a server that comes back after a reboot.
+
+Under `--remote` or `--library` the window says so in a sentence at the top and
+greys out Start, Stop and Pull — a reader over a port has no master key, and a
+library file the app owns is not this program's to sync. Search and the counts
+work in both, which is the half that is actually a reading job. It is the same
+refusal `cli.py` gives when `serve` is asked for over `--remote`, in the place
+a window can put it.
+
+The picture is the real window rather than a drawing of it:
+
+```sh
+DISPLAY=:0 uv run python scripts/gui_screenshot.py
+```
+
+Unlike the terminal interface, which Textual can paint headlessly, Tk has no
+software renderer — so this one is a photograph and needs a display, and the
+script says that and stops rather than writing nothing. It seeds the same demo
+library `scripts/screenshot.py` uses and points `XDG_CONFIG_HOME` at a
+temporary directory, so "Start at login" reads false whatever the machine
+taking the picture has installed, and taking it can never write a unit into
+somebody's real config.
 
 ### Where it keeps things
 
