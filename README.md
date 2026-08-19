@@ -106,31 +106,80 @@ summarizes while nobody is looking — it does not need sync, keys, or a second
 plaintext copy of anything:
 
 ```sh
-summareader-mcp --library ~/.local/share/sk.dataiza.summareader/summareader.sqlite ui
+./scripts/run.sh --library ~/.local/share/sk.dataiza.summareader/summareader.sqlite ui
 ```
 
 The file is opened **read-only**; the app can be running against it at the same
 time. Every command and every MCP tool works the same way.
 
-## Reading a mirror that is somewhere else
+## Running it headless, and reading it from a terminal
 
-The other direction: the library stays on the box allowed to hold it, and a
-terminal anywhere else reads it over that box's HTTP transport.
+The other direction: the library stays on the box that is allowed to hold it,
+and a terminal anywhere else reads it over that box's HTTP transport. **One
+host holds the plaintext, and every reader borrows it** rather than each one
+keeping a copy that has to be trusted, encrypted and cleaned up.
+
+**On the box.** Nothing listens until it is told to:
 
 ```sh
-export SUMMAREADER_MCP_TOKEN=…                 # the mirror's bearer_token
-summareader-mcp --remote http://box:8100 search "borrow checker"
-summareader-mcp --remote http://box:8100 ui
+./scripts/run.sh serve --transport=http --host=0.0.0.0 --port=8100
+```
+
+Set `bearer_token` in the config before that address, not after. Anything
+wider than loopback publishes the entire library, in plaintext, to whatever
+can route to the port — `scripts/install.sh` refuses to install such a bind
+while the key is unset, and the server warns about it at startup. (The key was
+`http_token` until this week; configs written with that name are still read.)
+
+```sh
+openssl rand -base64 32
+```
+
+**Leaving it running.** `run.sh` is a foreground process that dies with the
+shell that started it, which is right for trying it and wrong for a box you
+then walk away from. [§4](#4-as-a-user-service) is the durable form:
+
+```sh
+HOST=0.0.0.0 PORT=8100 ./scripts/install.sh    # systemd user service
+./scripts/install.sh --docker                  # or a container, restarting with the machine
+```
+
+**From the other machine.** The token is the only credential a reader carries:
+
+```sh
+export SUMMAREADER_MCP_TOKEN=…                          # the mirror's bearer_token
+./scripts/run.sh --remote http://box:8100 status
+./scripts/run.sh --remote http://box:8100 search "borrow checker" --since 30d
+./scripts/run.sh --remote http://box:8100 recent --limit 10
+./scripts/run.sh --remote http://box:8100 report --since 7d --out week.md
+./scripts/run.sh --remote http://box:8100 ui
 ```
 
 `--remote` needs no config file, no device token and no master key — it holds
 no library, so it decrypts nothing. `/mcp` is added to the address if you leave
-it off. This is the point of it: **one host holds the plaintext, and every
-reader borrows it** rather than each one keeping a copy that has to be trusted,
-encrypted and cleaned up.
+it off. This is also where a checkout stops being the convenient spelling: a
+laptop that only ever reads wants the package installed (`pip install .` into a
+virtualenv) or the frozen `dist/summareader-mcp`, and takes the same flags
+either way.
 
-Not to be confused with `server` in the config file, which is the sync server
-this mirrors *from*. `--remote` is a mirror it reads.
+`serve` and `pull` refuse under `--remote`, with a sentence rather than a
+key-length error:
+
+```
+summareader-mcp: --remote reads a mirror; it cannot be one. Drop --remote, or
+run this against the machine that holds the library.
+```
+
+Both need the master key, and a reader over a port has none by design. Reading
+only is the shape of the thing rather than a gap: `--remote` speaks the MCP
+tools, and the tools read.
+
+Which machine holds what, since that is the entire point of the arrangement:
+
+| | Holds |
+| --- | --- |
+| The box running `serve` | the master key, the device token, and the decrypted library in plaintext |
+| The terminal reading it | nothing — an address and a bearer token, both of which are revocable |
 
 The terminal interface is a client like any other under `--remote`: a separate
 process, talking to a server that is a separate process, over the same tools a
@@ -138,9 +187,8 @@ model would use. It holds one MCP session open for as long as it runs rather
 than dialling per search — on a thread of its own, because Textual is already
 running an event loop and a second one cannot nest inside it.
 
-Reading only, and that is the shape of the thing rather than a gap: `--remote`
-speaks the MCP tools, and the tools read. `pull` and `serve` refuse under it —
-both need the master key, which a reader has none of.
+Not to be confused with `server` in the config file, which is the sync server
+this mirrors *from*. `--remote` is a mirror it reads.
 
 ## Running it
 
@@ -173,17 +221,32 @@ None of this is needed to read a library that is already on the machine; see
 [above](#reading-a-library-that-is-already-here), which needs no server, no
 token and no key.
 
-Which one, in one table — the columns are who is on the other end, and whether
-Python of the right version is on the machine:
+### How the command is spelled
+
+The same program answers to three names, and which one you have depends on how
+it arrived on the machine. A fresh checkout has none of them on `PATH`:
+
+| Spelling | Where it comes from |
+| --- | --- |
+| `./scripts/run.sh …` | a checkout, and nothing else — it runs `.venv/bin/summareader-mcp` and points the config and the cache at the copies beside the repository |
+| `summareader-mcp …` | installing the package. `./scripts/install.sh` builds its own virtualenv and symlinks the console script into `~/.local/bin`; `pip install .` into any virtualenv puts it on that environment's path |
+| `./dist/summareader-mcp …` | `./scripts/freeze.sh` — one file with no Python outside it, run by its path and never installed anywhere |
+
+Every example here is written as `./scripts/run.sh`, because that is the one
+spelling a reader of this file certainly has. The arguments after it are
+identical whichever name you type.
+
+Which way to run it, in one table — the columns are who is on the other end,
+and whether Python of the right version is on the machine:
 
 | You want | Native | Docker |
 |---|---|---|
 | A model, over stdio | `./scripts/run.sh` | — a container is not a subprocess |
 | A model, over a port | `./scripts/run.sh serve --transport=http` | `docker compose up -d` |
 | It back after a reboot | `./scripts/install.sh` | `./scripts/install.sh --docker` |
-| To read it yourself | `summareader-mcp ui` | `./scripts/run.sh ui` — on the host, against the same `./.cache` the container mounts |
-| To read a mirror on another box | `summareader-mcp --remote http://box:8100 …` | same — it is the port that answers |
-| No Python on the machine | `./scripts/freeze.sh`, then `dist/summareader-mcp` | any of the above |
+| To read it yourself | `./scripts/run.sh ui` | `./scripts/run.sh ui` — on the host, against the same `./.cache` the container mounts |
+| To read a mirror on another box | `./scripts/run.sh --remote http://box:8100 …` | same — it is the port that answers |
+| No Python on the machine | `./scripts/freeze.sh`, then `./dist/summareader-mcp` | any of the above |
 
 There is no desktop window in either column — the reading interface is the
 terminal one, and [§2](#2-the-terminal-interface) is what it looks like.
@@ -229,7 +292,7 @@ thing that will stop working, and it should have been stopping all along.
 ### 2. The terminal interface
 
 ```sh
-summareader-mcp ui
+./scripts/run.sh ui
 ```
 
 ![The terminal interface: a query box, results, and the selected article beside them](docs/tui.svg)
@@ -272,11 +335,11 @@ Everything the tools do, without a language model in the room — which is also
 how you check what the tools are answering.
 
 ```sh
-summareader-mcp search "borrow checker" --since 30d
-summareader-mcp recent --limit 10
-summareader-mcp report --source "Hacker News" --since 7d --out week.md
-summareader-mcp status
-summareader-mcp pull              # sync once and say what arrived
+./scripts/run.sh search "borrow checker" --since 30d
+./scripts/run.sh recent --limit 10
+./scripts/run.sh report --source "Hacker News" --since 7d --out week.md
+./scripts/run.sh status
+./scripts/run.sh pull              # sync once and say what arrived
 ```
 
 `search` takes the same filters as `search_library` as flags: `--title`,
@@ -288,8 +351,9 @@ the first thing to run when a query comes back empty.
 
 `--format json` on any of the reading commands, for something else to consume.
 
-From a checkout, `./scripts/run.sh search rust` runs any of these against the
-config and cache beside the repository.
+`./scripts/run.sh` is the checkout spelling, against the config and cache
+beside the repository; after `./scripts/install.sh` the same commands are
+`summareader-mcp search rust` and the service's own cache.
 
 ### 4. As a user service
 
@@ -306,6 +370,14 @@ service, under `~/.config/systemd/user` — this process holds the master key an
 a plaintext copy of the library, so it belongs to one person and needs no root
 to install or remove. `scripts/summareader-mcp.service` is the definition the
 installer fills in.
+
+This is also what puts `summareader-mcp` on `PATH`: the installer builds a
+virtualenv of its own under `~/.cache/summareader-mcp/venv`, `pip install .`
+into it, and symlinks that environment's console script into `~/.local/bin`.
+Its own virtualenv because a service should not have its dependencies changed
+by something else on the machine, and the unit's `ExecStart` is that symlink
+rather than anything in this checkout — so the service keeps running whatever
+you do to `.venv` afterwards.
 
 The port and the address are the installer's, not the unit file's — edit the
 installed copy and the next install overwrites it:
@@ -396,7 +468,7 @@ else has to be undone: delete it and the next run replays the log from zero.
 ```sh
 systemctl --user stop summareader-mcp    # or: docker compose down
 rm ~/.cache/summareader-mcp/library.sqlite*
-summareader-mcp pull                     # rebuilds, then say what arrived
+./scripts/run.sh pull                    # rebuilds, then says what arrived
 ```
 
 The `*` matters — WAL leaves `-wal` and `-shm` beside the database, and a
