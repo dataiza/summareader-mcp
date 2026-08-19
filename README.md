@@ -158,9 +158,16 @@ cp summareader-mcp.example.json summareader-mcp.local.json   # then fill it in
 ```
 
 The device token comes from a paired device (`POST /enroll`) or from
-`summareader-sync pair` for the first one, and is revocable. The master key is
-the value the pairing QR carries — **it is not revocable, and anything holding
-it can read everything.**
+`summareader-sync first-device` for the first one, and is revocable. The master
+key is the value the pairing QR carries — **it is not revocable, and anything
+holding it can read everything.**
+
+**The short way to all three:** in the app, Settings → Sync → *Another device*,
+name it, *Make a code*, then **Copy MCP config**. That writes exactly this
+file's `server`, `token`, `master_key` and `name`, filled in. A pairing code is
+a QR with one-letter keys — `k` is the master key, `t` the new device's token —
+and matching those against these names by eye is a mistake nobody notices until
+the mirror refuses to start.
 
 None of this is needed to read a library that is already on the machine; see
 [above](#reading-a-library-that-is-already-here), which needs no server, no
