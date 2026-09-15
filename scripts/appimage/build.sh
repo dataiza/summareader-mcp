@@ -62,6 +62,13 @@ cp -r "$bundle/." "$app/usr/bin/"
 # running from an image at all.
 install -m 755 "$mirror" "$app/usr/bin/summareader-mcp"
 
+# The licence travels with the binary, which the AGPL is not shy about. An
+# image is a single file somebody downloads with no directory beside it, so
+# there is nowhere else for it to be — usr/share/doc is where a package would
+# put it and is where anyone looking will look.
+mkdir -p "$app/usr/share/doc/$id"
+install -m 644 "$repo/LICENSE" "$app/usr/share/doc/$id/LICENSE"
+
 install -m 755 "$here/AppRun" "$app/AppRun"
 install -m 644 "$here/$id.desktop" "$app/$id.desktop"
 
