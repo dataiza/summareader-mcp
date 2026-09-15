@@ -21,6 +21,8 @@ Future<void> draw(
   WidgetTester tester,
   ConsoleState state, {
   VoidCallback? onToggle,
+  ValueChanged<String>? onPair,
+  void Function({required bool existing})? onBrowse,
 }) async {
   tester.view.physicalSize = const Size(1100, 1200);
   tester.view.devicePixelRatio = 1;
@@ -32,6 +34,8 @@ Future<void> draw(
         state: state,
         query: TextEditingController(),
         onToggle: onToggle,
+        onPair: onPair,
+        onBrowse: onBrowse,
       ),
     ),
   );
@@ -173,5 +177,69 @@ void main() {
     // The token is described, never printed. A window that shows a credential
     // is a window somebody screenshots.
     expect(find.text('set'), findsOneWidget);
+  });
+
+  testWidgets('a payload pasted into the field is handed over whole', (
+    tester,
+  ) async {
+    String? paired;
+    await draw(tester, reading(null, local: true), onPair: (t) => paired = t);
+    await openSettings(tester);
+
+    // Twice over, as Search is: the row's label, and the button beside it.
+    expect(find.text('Pair'), findsNWidgets(2));
+    await tester.enterText(
+      find.widgetWithText(TextField, 'or paste it here and press Enter'),
+      '{"server": "https://sync.example"}',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    // Whole and unparsed: the window decides nothing about a payload, which
+    // is what keeps the master key out of every widget on this page.
+    expect(paired, '{"server": "https://sync.example"}');
+  });
+
+  testWidgets('a console that has no file to write into offers no Pair', (
+    tester,
+  ) async {
+    // `--remote` and `--library` name no config file, and a console reading
+    // somebody else's mirror has no business being handed a master key.
+    await draw(tester, reading(null, local: true));
+    await openSettings(tester);
+    expect(find.text('Pair'), findsNothing);
+  });
+
+  testWidgets('the master key is described and never printed', (tester) async {
+    await draw(
+      tester,
+      ConsoleState(
+        status: 'Not running — http://127.0.0.1:8100',
+        running: false,
+        local: true,
+        stats: formatStats(const {}, '0'),
+        configRows: const [('Master key', 'set')],
+      ),
+      onPair: (_) {},
+    );
+    await openSettings(tester);
+
+    expect(find.text('set'), findsOneWidget);
+    expect(find.textContaining('AAAA'), findsNothing);
+  });
+
+  testWidgets('Browse… asks for the mode the row is in', (tester) async {
+    bool? asked;
+    await draw(
+      tester,
+      reading(null, local: true),
+      onBrowse: ({required existing}) => asked = existing,
+    );
+    await openSettings(tester);
+
+    await tester.tap(find.text('Browse…'));
+    await tester.pump();
+    // "Its own copy" is selected in this state, so the dialog is being opened
+    // for a directory this mirror will fill.
+    expect(asked, isFalse);
   });
 }

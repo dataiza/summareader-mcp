@@ -51,6 +51,7 @@ import 'package:summareader_ui/summareader_ui.dart';
 
 import 'src/addresses.dart';
 import 'src/config.dart';
+import 'src/file_choice.dart';
 import 'src/first_run.dart';
 import 'src/console.dart';
 import 'src/library.dart';
@@ -82,9 +83,16 @@ class ConsoleApp extends StatelessWidget {
 }
 
 class ConsoleScreen extends StatefulWidget {
-  const ConsoleScreen({super.key, required this.options});
+  const ConsoleScreen({
+    super.key,
+    required this.options,
+    this.chooser = const PlatformDirectoryChooser(),
+  });
 
   final Options options;
+
+  /// The real dialog, unless something without a screen is handed one.
+  final DirectoryChooser chooser;
 
   @override
   State<ConsoleScreen> createState() => _ConsoleScreenState();
@@ -429,6 +437,11 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       onBind: (host) => unawaited(_rebind(host, _supervisor!.port)),
       onPort: _setPort,
       onLibrary: _local ? _setLibrary : null,
+      onBrowse: _local ? _browse : null,
+      // Only where there is a file to write into: `--remote` and `--library`
+      // name none, and a console reading somebody else's mirror has no
+      // business being handed a master key.
+      onPair: _config.fromAFile ? _pair : null,
     );
   }
 
@@ -473,6 +486,31 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     await _setLibrary(wanted, existing: false);
   }
 
+  /// The same errand as typing a path, with the typing done by a dialog.
+  ///
+  /// A directory in both modes: the mirror's own copy is one, and an existing
+  /// library is the app's file *inside* one — nobody navigates to an
+  /// application support directory to pick a `.sqlite` out of it. What comes
+  /// back goes through [_setLibrary] like anything typed, so `libraryRefusal`
+  /// is still the only thing that decides whether a path will do.
+  Future<void> _browse({required bool existing}) async {
+    final chosen = await chooseLibrary(
+      widget.chooser,
+      existing: existing,
+      startingIn: _config.readsALocalLibrary
+          ? File(_config.database).parent.path
+          : _config.cacheDir,
+    );
+    if (!mounted) return;
+    if (chosen.refusal != null) {
+      _fading.say(chosen.refusal!);
+      return;
+    }
+    if (chosen.path != null) {
+      await _setLibrary(chosen.path!, existing: existing);
+    }
+  }
+
   Future<void> _setLibrary(String path, {required bool existing}) =>
       _act('moving', () async {
         final trimmed = path.trim();
@@ -486,47 +524,80 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           library: existing ? trimmed : null,
           cacheDir: existing ? null : trimmed,
         );
-
-        final supervisor = _supervisor;
-        final wasRunning = await supervisor?.running() ?? false;
-        await supervisor?.stop();
-        _config = widget.options.configuration;
-        _library?.close();
-        _open();
-        final previous = _supervisor;
-        if (previous != null) {
-          // Rebuilt rather than mutated: it holds the cache directory it was
-          // given, and that is exactly what has just moved.
-          _supervisor = Supervisor(
-            configFile: _config.file,
-            cacheDir: _config.cacheDir,
-            host: previous.host,
-            port: previous.port,
-            bearerToken: _config.bearerToken,
-          );
-        }
-        unawaited(_search(_query.text));
-        if (serviceInstalled()) {
-          await installService(
-            renderUnit(
-              host: _config.host,
-              port: _config.port,
-              configFile: _config.file,
-              cacheDir: _config.cacheDir,
-            ),
-          );
-        } else if (wasRunning) {
-          await _supervisor?.start();
-        }
+        await _reopen();
         return existing
             ? 'reading $trimmed, read-only'
             : 'its own library, in $trimmed';
       });
 
+  /// Everything the config file decides, opened again after it changed.
+  ///
+  /// Shared by the library row and by pairing, because the order is the part
+  /// that goes wrong: stop first, read the file back, then build a supervisor
+  /// around what it now says — and rewrite the unit when there is one, since
+  /// it carries SUMMAREADER_MCP_CACHE and a unit that disagrees with the
+  /// config brings the old arrangement back at the next login.
+  Future<void> _reopen() async {
+    final previous = _supervisor;
+    final wasRunning = await previous?.running() ?? false;
+    await previous?.stop();
+    _config = widget.options.configuration;
+    _library?.close();
+    _open();
+    // Rebuilt rather than mutated: a supervisor holds the config file and the
+    // cache directory it was handed, and those are what has just changed.
+    // Built from nothing when pairing is what turned this console into the
+    // machine that holds a library — until then there was no mirror to
+    // supervise, and Start had nothing to call.
+    if (previous != null || _local) {
+      _supervisor = Supervisor(
+        configFile: _config.file,
+        cacheDir: _config.cacheDir,
+        host: previous?.host ?? widget.options.host ?? _config.host,
+        port: previous?.port ?? widget.options.port ?? _config.port,
+        bearerToken: _config.bearerToken,
+      );
+      previous?.close();
+    }
+    unawaited(_search(_query.text));
+    if (serviceInstalled()) {
+      await installService(
+        renderUnit(
+          host: _config.host,
+          port: _config.port,
+          configFile: _config.file,
+          cacheDir: _config.cacheDir,
+        ),
+      );
+    } else if (wasRunning) {
+      await _supervisor?.start();
+    }
+  }
+
+  /// The whole of a configuration, in one paste.
+  ///
+  /// The three values a mirror needs were hand-edited in, which is a base64
+  /// key retyped across a desk; the app already puts exactly them on the
+  /// clipboard. Written in one save, because a file holding a new server
+  /// beside an old token is a mirror that pulls nothing and says nothing
+  /// about why. The key goes in and is never read back out: the message this
+  /// returns names the server and nothing else.
+  Future<void> _pair(String pasted) => _act('pairing', () async {
+    final pairing = Pairing.read(pasted);
+    if (pairing.refusal != null) return pairing.refusal!;
+    _config.save(pairing.keys!);
+    await _reopen();
+    return 'paired with ${_config.server}';
+  });
+
   List<(String, String)> _configRows() => [
     ('File', _config.file),
     ('Sync server', _config.server ?? '—'),
     ('Name', _config.instanceName ?? '(unset)'),
+    // Whether there is one, and never what it is. Pairing writes this key and
+    // nothing reads it back out — a window that can show a master key is a
+    // window that can lose one to a screenshot.
+    ('Master key', _config.masterKey == null ? 'not set' : 'set'),
     // Never the token itself. A window that shows a credential is a window
     // somebody screenshots.
     (

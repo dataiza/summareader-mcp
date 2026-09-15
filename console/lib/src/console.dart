@@ -10,6 +10,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard;
 import 'package:summareader_ui/summareader_ui.dart';
 
 import 'addresses.dart';
@@ -85,6 +86,8 @@ class ConsoleView extends StatefulWidget {
     this.onBind,
     this.onPort,
     this.onLibrary,
+    this.onPair,
+    this.onBrowse,
   });
 
   final ConsoleState state;
@@ -101,6 +104,16 @@ class ConsoleView extends StatefulWidget {
 
   /// A path, and whether this mirror is to own the library there.
   final void Function(String path, {required bool existing})? onLibrary;
+
+  /// Open a directory picker for one of the two modes, and do with the answer
+  /// whatever [onLibrary] would have done with a typed path. Null where there
+  /// is nothing to choose, for the same reasons [onLibrary] is.
+  final void Function({required bool existing})? onBrowse;
+
+  /// A whole pairing payload, from the clipboard or from the field beside it.
+  /// Null where there is no config file to write into — a `--remote` or
+  /// `--library` console is reading somebody else's arrangement.
+  final ValueChanged<String>? onPair;
 
   @override
   State<ConsoleView> createState() => _ConsoleViewState();
@@ -460,15 +473,35 @@ class _ConsoleViewState extends State<ConsoleView> {
               ],
             ),
             const SizedBox(height: 8),
-            _PathField(
-              key: ValueKey('library:${widget.state.libraryPath}'),
-              path: widget.state.libraryPath,
-              onSubmitted: widget.onLibrary == null || widget.state.busy
-                  ? null
-                  : (value) => widget.onLibrary!(
-                      value,
-                      existing: !widget.state.ownsLibrary,
-                    ),
+            Row(
+              children: [
+                Expanded(
+                  child: _PathField(
+                    key: ValueKey('library:${widget.state.libraryPath}'),
+                    path: widget.state.libraryPath,
+                    onSubmitted: widget.onLibrary == null || widget.state.busy
+                        ? null
+                        : (value) => widget.onLibrary!(
+                            value,
+                            existing: !widget.state.ownsLibrary,
+                          ),
+                  ),
+                ),
+                const SizedBox(width: Ar.space2),
+                // Beside the field rather than instead of it: a path can still
+                // be typed or pasted, and a machine reached over ssh has no
+                // dialog to open at all.
+                PillButton(
+                  label: 'Browse…',
+                  icon: Icons.folder_open_rounded,
+                  height: 38,
+                  onTap: widget.onBrowse == null || widget.state.busy
+                      ? null
+                      : () => widget.onBrowse!(
+                          existing: !widget.state.ownsLibrary,
+                        ),
+                ),
+              ],
             ),
           ],
         ),
@@ -490,7 +523,9 @@ class _ConsoleViewState extends State<ConsoleView> {
   /// in the first row, which is where to go and change them.
   Widget _fromTheConfigFile() => _section(
     'From the config file',
-    'Read here, edited there. The master key is never shown at all.',
+    'Read here, edited there — except pairing, which writes the server, the '
+        'token and the key together in one go. The master key is never shown '
+        'at all.',
     _card([
       for (final (label, value) in widget.state.configRows)
         _row(
@@ -503,7 +538,46 @@ class _ConsoleViewState extends State<ConsoleView> {
             maxLines: 1,
           ),
         ),
+      if (widget.onPair != null) _pair(),
     ]),
+  );
+
+  /// The one thing on this page that writes a credential.
+  ///
+  /// Whole payloads only: the button takes what the app's Copy MCP config put
+  /// on the clipboard and the field takes the same text when the clipboard is
+  /// not the route — a phone reading the code aloud, a payload out of a
+  /// message. Either way it is accepted or refused entire, which is what
+  /// makes writing a master key from a window acceptable when a field holding
+  /// one would not be.
+  Widget _pair() => _row(
+    'Pair',
+    Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        PrimaryButton(
+          label: 'Pair',
+          icon: Icons.content_paste_rounded,
+          onTap: widget.state.busy
+              ? null
+              : () async {
+                  final board = await Clipboard.getData(Clipboard.kTextPlain);
+                  widget.onPair!(board?.text ?? '');
+                },
+        ),
+        const SizedBox(height: 8),
+        _PathField(
+          key: const ValueKey('pair'),
+          path: '',
+          hint: 'or paste it here and press Enter',
+          onSubmitted: widget.state.busy ? null : widget.onPair,
+        ),
+      ],
+    ),
+    hint:
+        'In the app: Settings → Sync → Add another device → Copy MCP config. '
+        'The pairing code itself works too. Nothing of it is shown here, and '
+        'the key least of all.',
   );
 
   /// What can go in the box, spelled out under it.
@@ -681,14 +755,21 @@ class _ConsoleViewState extends State<ConsoleView> {
   );
 }
 
-/// A path, in a field wide enough to read one.
+/// A path, in a field wide enough to read one — and the box a pairing payload
+/// is pasted into, which wants the same thing of a field and nothing more.
 ///
 /// Same reason as the port field below: rebuilt from state twice a second, a
 /// controller loses the caret mid-word.
 class _PathField extends StatefulWidget {
-  const _PathField({super.key, required this.path, this.onSubmitted});
+  const _PathField({
+    super.key,
+    required this.path,
+    this.hint,
+    this.onSubmitted,
+  });
 
   final String path;
+  final String? hint;
   final ValueChanged<String>? onSubmitted;
 
   @override
@@ -707,6 +788,7 @@ class _PathFieldState extends State<_PathField> {
   @override
   Widget build(BuildContext context) => ArField(
     controller: _controller,
+    hint: widget.hint,
     background: Ar.neutral100,
     onSubmitted: widget.onSubmitted,
   );

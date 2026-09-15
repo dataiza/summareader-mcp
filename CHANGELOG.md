@@ -4,6 +4,48 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
+## 0.4.0
+
+### Pairing, instead of editing three values in by hand
+
+`server`, `token` and `master_key` were typed into the config file, which
+means a base64 key retyped across a desk — the one transcription here where a
+wrong character costs a library that will not decrypt.
+
+The console's Configuration page has a **Pair** button. It takes what the app's
+Settings → Sync → Add another device → **Copy MCP config** put on the
+clipboard, and the pairing code beside that button as well: the same three
+values under the names the QR uses, letters and all, so a code drawn by an
+older release still pairs. There is a field beside it for when the clipboard is
+not the route.
+
+All four keys are written in **one save**. Half a configuration is a mirror
+that does not start and says nothing about which half is missing. Everything
+else in the file — comments, unknown keys, the old `http_token` spelling — is
+put back exactly as it was read.
+
+**The master key is written and never shown.** No field holds it, no row
+displays it, nothing logs it; the configuration list says only whether a key is
+set. Accepting a whole payload at once is a different operation from editing a
+secret by hand, which is what makes it acceptable at all.
+
+Anything that will not do is a sentence and nothing is written: not JSON, a
+version this console cannot read, any of the three missing, or a key that is
+not 32 bytes once decoded — named by its length, never its contents.
+
+### Browse… beside the library path
+
+A directory picker in both modes, so the path does not have to be typed. "Its
+own copy" takes the directory as picked. "An existing library" takes a
+directory too and finds the app's database inside it — `summareader.sqlite`, or
+`allreader.sqlite` on installs that predate a rename, the two names and the
+order the app itself uses. A directory holding neither is refused with a
+sentence naming both and where they were looked for.
+
+The typed field still works, and a picked path goes through exactly the same
+check as a typed one. macOS gained the user-selected-files entitlement, without
+which the picker returns nothing there and says nothing about why.
+
 ## 0.3.0
 
 ### The library moved out of the cache directory

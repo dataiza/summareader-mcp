@@ -148,6 +148,179 @@ void main() {
     });
   });
 
+  /// Pairing, which is the one thing in this window that writes a credential.
+  ///
+  /// Both spellings, because the app copies one and shows the other, and every
+  /// refusal, because a payload that will not do has to leave the file exactly
+  /// as it was — half a configuration is a mirror that does not start and says
+  /// nothing about which half is missing.
+  group('pairing', () {
+    // What Settings → Sync → Add another device → Copy MCP config puts on the
+    // clipboard.
+    const mcp =
+        '{"server": "https://sync.example", "token": "device-token", '
+        '"master_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", '
+        '"name": "MCP mirror"}';
+
+    // The same three values as the pairing code beside that button spells
+    // them.
+    const code =
+        '{"version": 2, "master_key": '
+        '"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", '
+        '"from_device": "a laptop", "server": "https://sync.example", '
+        '"device_token": "device-token"}';
+
+    const key = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
+
+    test('the config the app copies', () {
+      final read = Pairing.read(mcp);
+      expect(read.refusal, isNull);
+      expect(read.keys, {
+        'server': 'https://sync.example',
+        'token': 'device-token',
+        'master_key': key,
+        'name': 'MCP mirror',
+      });
+    });
+
+    test('the pairing code, which spells the same values differently', () {
+      final read = Pairing.read(code);
+      expect(read.refusal, isNull);
+      expect(read.keys!['server'], 'https://sync.example');
+      expect(read.keys!['token'], 'device-token');
+      expect(read.keys!['master_key'], key);
+      // The device that showed the code names the mirror, so the app's
+      // paired-devices list has something to show rather than a blank row.
+      expect(read.keys!['name'], 'a laptop');
+    });
+
+    test('a version 1 code, in the letters that release wrote', () {
+      // A code is read off whatever screen is in front of somebody, and
+      // pairing is the worst moment to find out the two machines are a
+      // release apart.
+      final read = Pairing.read(
+        '{"v": 1, "k": "$key", "u": "https://sync.example", '
+        '"t": "device-token", "d": "Phone"}',
+      );
+      expect(read.refusal, isNull);
+      expect(read.keys!['server'], 'https://sync.example');
+      expect(read.keys!['token'], 'device-token');
+      expect(read.keys!['name'], 'Phone');
+    });
+
+    test('an unnamed payload is still named in the file', () {
+      final read = Pairing.read(
+        '{"server": "https://sync.example", "token": "t", "master_key": '
+        '"$key"}',
+      );
+      expect(read.keys!['name'], 'MCP mirror');
+    });
+
+    test('nothing on the clipboard and nothing typed', () {
+      final read = Pairing.read('   ');
+      expect(read.keys, isNull);
+      expect(read.refusal, contains('Nothing to pair with'));
+    });
+
+    test('something that is not JSON at all', () {
+      final read = Pairing.read('https://sync.example');
+      expect(read.keys, isNull);
+      expect(read.refusal, contains('not JSON'));
+      // And says where the right thing comes from, rather than only what was
+      // wrong with what was pasted.
+      expect(read.refusal, contains('Copy MCP config'));
+    });
+
+    test('JSON that is not an object names no keys', () {
+      expect(Pairing.read('[1, 2]').refusal, contains('not an object'));
+    });
+
+    test('a version this console does not know how to read', () {
+      final read = Pairing.read(
+        code.replaceFirst('"version": 2', '"version": 9'),
+      );
+      expect(read.keys, isNull);
+      expect(read.refusal, contains('version 9'));
+    });
+
+    test('a code a server showed, which carries no key', () {
+      // The server has never held the master key and must not, so the code
+      // its window draws says where to sync and with which token, and that is
+      // not a configuration.
+      final read = Pairing.read(
+        '{"version": 2, "server": "https://sync.example", '
+        '"device_token": "device-token", "from_device": "the server"}',
+      );
+      expect(read.keys, isNull);
+      expect(read.refusal, contains('the master key'));
+    });
+
+    test('each of the three is named when it is the one missing', () {
+      expect(
+        Pairing.read(mcp.replaceFirst('"server"', '"_server"')).refusal,
+        contains('the sync server'),
+      );
+      expect(
+        Pairing.read(mcp.replaceFirst('"token"', '"_t"')).refusal,
+        contains('the device token'),
+      );
+      // Present but empty counts as missing: config.py reads an empty value
+      // as a value, so a file written from one would look complete and still
+      // not start.
+      expect(
+        Pairing.read(mcp.replaceFirst('"device-token"', '""')).refusal,
+        contains('the device token'),
+      );
+    });
+
+    test('a master key that is not base64', () {
+      final read = Pairing.read(mcp.replaceFirst(key, 'not a key'));
+      expect(read.keys, isNull);
+      expect(read.refusal, contains('not base64'));
+    });
+
+    test('a master key of the wrong length, named by its length only', () {
+      final read = Pairing.read(mcp.replaceFirst(key, 'AAAA'));
+      expect(read.keys, isNull);
+      expect(read.refusal, contains('3 bytes, not 32'));
+      // Never the key itself. A refusal is a sentence on somebody's screen.
+      expect(read.refusal, isNot(contains('AAAA')));
+    });
+
+    test('pairing writes all four keys and leaves the rest of the file', () {
+      final file = write(dir, _full);
+      final read = Pairing.read(code);
+      MirrorConfig.load(
+        file: file.path,
+        environment: const {},
+      ).save(read.keys!);
+
+      final after = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+      expect(after['server'], 'https://sync.example');
+      expect(after['token'], 'device-token');
+      expect(after['master_key'], key);
+      expect(after['name'], 'a laptop');
+      // The comment keys, the unknown key and the old bearer-token spelling
+      // belong to the person, not to this window.
+      expect(after['_master_key'], 'NOT revocable.');
+      expect(after['http_token'], 's3cret');
+      expect(after['something_this_version_never_heard_of'], {
+        'nested': [1, 2],
+      });
+    });
+
+    test('a refused payload writes nothing', () {
+      final file = write(dir, _full);
+      final before = file.readAsStringSync();
+      for (final pasted in ['', 'not json', '[1]', '{"server": "x"}']) {
+        final read = Pairing.read(pasted);
+        expect(read.refusal, isNotNull, reason: pasted);
+        expect(read.keys, isNull, reason: pasted);
+      }
+      expect(file.readAsStringSync(), before);
+    });
+  });
+
   test('a flag that was not passed is null, not the default', () {
     // Otherwise the config file's address could never win over an argparse
     // default nobody typed.

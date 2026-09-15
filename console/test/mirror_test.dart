@@ -11,6 +11,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:summareader_mcp_console/src/addresses.dart';
+import 'package:summareader_mcp_console/src/file_choice.dart';
 import 'package:summareader_mcp_console/src/mirror.dart';
 
 const exe = ['/home/you/.local/bin/summareader-mcp'];
@@ -417,6 +418,66 @@ void main() {
       contains('http://x'),
     );
   });
+
+  /// Browse…, which is typing a path with a dialog doing the typing.
+  ///
+  /// The dialog itself is native and cannot be opened or dismissed from here,
+  /// so it is the only part behind the seam; what a picked directory becomes,
+  /// and what a dismissed one does not become, is ordinary code and is where
+  /// this goes wrong.
+  group('picking a directory', () {
+    late Directory dir;
+
+    setUp(() => dir = Directory.systemTemp.createTempSync('mcp-browse'));
+    tearDown(() => dir.deleteSync(recursive: true));
+
+    test('its own copy takes the directory as it was picked', () async {
+      final chosen = await chooseLibrary(_Picks(dir.path), existing: false);
+      expect(chosen.path, dir.path);
+      expect(chosen.refusal, isNull);
+    });
+
+    test('an existing library is the file inside the directory', () async {
+      // Nobody navigates to an application support directory to pick a
+      // .sqlite out of it, which is the whole reason this button exists.
+      File('${dir.path}/summareader.sqlite').writeAsStringSync('');
+      final chosen = await chooseLibrary(_Picks(dir.path), existing: true);
+      expect(chosen.path, '${dir.path}/summareader.sqlite');
+      expect(chosen.refusal, isNull);
+    });
+
+    test('the name it had before a rename is found too', () async {
+      // Installs that predate it still hold one, and a console that looked
+      // for one name would report a library sitting right there as missing.
+      File('${dir.path}/allreader.sqlite').writeAsStringSync('');
+      final chosen = await chooseLibrary(_Picks(dir.path), existing: true);
+      expect(chosen.path, '${dir.path}/allreader.sqlite');
+    });
+
+    test('the current name wins where both are there', () async {
+      for (final name in const ['summareader.sqlite', 'allreader.sqlite']) {
+        File('${dir.path}/$name').writeAsStringSync('');
+      }
+      final chosen = await chooseLibrary(_Picks(dir.path), existing: true);
+      expect(chosen.path, '${dir.path}/summareader.sqlite');
+    });
+
+    test('a directory holding neither is a sentence naming both', () async {
+      final chosen = await chooseLibrary(_Picks(dir.path), existing: true);
+      expect(chosen.path, isNull);
+      expect(chosen.refusal, contains('summareader.sqlite'));
+      expect(chosen.refusal, contains('allreader.sqlite'));
+      expect(chosen.refusal, contains(dir.path));
+    });
+
+    test('a dialog somebody closed changes nothing', () async {
+      for (final existing in const [true, false]) {
+        final chosen = await chooseLibrary(_Picks(null), existing: existing);
+        expect(chosen.path, isNull);
+        expect(chosen.refusal, isNull);
+      }
+    });
+  });
 }
 
 class _Fake implements Owned {
@@ -429,4 +490,15 @@ class _Fake implements Owned {
 
   @override
   Future<void> stop() async => stopped = true;
+}
+
+/// A dialog that answers the same thing every time, and never draws anything.
+class _Picks implements DirectoryChooser {
+  const _Picks(this.answer);
+
+  /// Null is somebody closing the dialog, which has to change nothing.
+  final String? answer;
+
+  @override
+  Future<String?> chooseDirectory({String? startingIn}) async => answer;
 }

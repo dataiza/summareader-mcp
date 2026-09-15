@@ -410,6 +410,33 @@ String? libraryRefusal(String path, {required bool existing}) {
   return null;
 }
 
+/// The app's own database inside a chosen directory, or null when there is
+/// none.
+///
+/// Both names, newest first, because the file was `allreader.sqlite` before a
+/// rename and installs that predate it still hold one — the app looks for
+/// exactly these two, in this order, and a console that looked for one of
+/// them would report a library that is sitting right there as missing.
+///
+/// A directory rather than the file itself is what the picker asks for: the
+/// file lives in an application support directory nobody navigates to by
+/// choice, and pointing at the folder is the whole convenience.
+String? appLibraryIn(String directory) {
+  for (final name in const ['summareader.sqlite', 'allreader.sqlite']) {
+    final candidate = File('$directory/$name');
+    if (candidate.existsSync()) return candidate.path;
+  }
+  return null;
+}
+
+/// What to say about a directory that holds neither, naming both files and the
+/// place they were looked for — "no library there" sends somebody back to the
+/// same dialog to guess again.
+String noLibraryIn(String directory) =>
+    'No summareader.sqlite or allreader.sqlite in $directory. That is the '
+    'directory the app keeps its library in — choose that one, or type the '
+    'path to the file. Nothing has been changed.';
+
 class Supervisor implements Owned {
   Supervisor({
     required this.configFile,

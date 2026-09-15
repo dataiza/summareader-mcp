@@ -4,5 +4,10 @@
 <dict>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
+	<!-- The Browse… buttons in "Where the data lives". Only a directory
+	     somebody picked in an open panel — without this the picker returns
+	     nothing on macOS, with no error anywhere to say why. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
 </dict>
 </plist>

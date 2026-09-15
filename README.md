@@ -41,8 +41,14 @@ $EDITOR summareader-mcp.local.json
 ```
 
 Three values are required: `server`, `token`, `master_key`. In the app,
-Settings → Sync → Add another device → **Copy MCP config** writes all three
-plus `name`.
+Settings → Sync → Add another device → **Copy MCP config** puts all three plus
+`name` on the clipboard.
+
+With the desktop console there is nothing to edit: Configuration → **Pair**
+takes that clipboard and writes the four keys in one save. The pairing code
+shown beside the button works too — it carries the same values under the names
+the QR uses. Everything else in the file is left exactly as it was, and the
+master key is written without ever being shown.
 
 | Key | Environment | What it is |
 | --- | --- | --- |
@@ -270,6 +276,12 @@ It takes `--config`, `--library`, `--remote`, `--host` and `--port`. With a
 systemd user unit installed, Start and Stop drive `systemctl --user`; without
 one, Start runs a child process. It finds the mirror through
 `SUMMAREADER_MCP_EXE`, then a `summareader-mcp` beside itself, then `PATH`.
+
+Configuration holds two things the config file no longer has to be edited for:
+**Pair**, above, and **Browse…** beside the library path. Browse… asks for a
+directory in both modes — the directory this mirror fills, or the one the app
+keeps its library in, where `summareader.sqlite` (or `allreader.sqlite`, from
+before a rename) is found by name. A path can still be typed.
 
 Under `--remote` or `--library` the server controls are greyed out; search and
 the counts still work.

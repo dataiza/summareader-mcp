@@ -32,6 +32,7 @@ class MirrorConfig {
     this.remote,
     this.host = '127.0.0.1',
     this.port = 8100,
+    this.fromAFile = true,
   });
 
   /// The config file, whether or not it exists — knowing which file to edit is
@@ -54,6 +55,12 @@ class MirrorConfig {
   /// server would have used anyway.
   final String host;
   final int port;
+
+  /// False for the two arrangements below, which hold a sentence in [file]
+  /// rather than a path. Asked before anything is written: `--remote` and
+  /// `--library` name no config file, and pairing one of them would write a
+  /// master key into a file called "(none — reading …)".
+  final bool fromAFile;
 
   String get database => library ?? '$cacheDir/library.sqlite';
 
@@ -81,6 +88,7 @@ class MirrorConfig {
   factory MirrorConfig.forRemote(String url, {String? token}) => MirrorConfig(
     file: '(none — reading $url)',
     cacheDir: '',
+    fromAFile: false,
     remote: url,
     bearerToken: token,
   );
@@ -90,6 +98,7 @@ class MirrorConfig {
     file: '(none — reading $path)',
     cacheDir: File(path).parent.path,
     library: path,
+    fromAFile: false,
   );
 
   static MirrorConfig load({String? file, Map<String, String>? environment}) {
@@ -229,6 +238,142 @@ class MirrorConfig {
     temp.renameSync(file);
   }
 }
+
+/// A whole configuration, pasted in one piece.
+///
+/// The three values a mirror needs were hand-edited into the file and nothing
+/// else, which is a base64 key retyped across a desk — the one transcription
+/// in this project where a wrong character costs a library that will not
+/// decrypt. The app already puts exactly these on the clipboard (Settings →
+/// Sync → Add another device → Copy MCP config), and its pairing code carries
+/// the same values under different names.
+///
+/// Both spellings are read, and the letters version 1 used as well, because
+/// the code on the other screen was drawn by whatever release that machine is
+/// running and pairing is the worst moment to find out the two are a release
+/// apart.
+///
+/// This is the only route by which this window writes a master key, and it is
+/// acceptable for the reason a field would not be: the whole payload is
+/// accepted at once, unread and unshown, or refused as a whole. Nothing here
+/// ever puts the key on screen or in a message — see [refusal], which names
+/// the length of a bad key and never its contents.
+class Pairing {
+  const Pairing._({this.keys, this.refusal});
+
+  /// What to hand [MirrorConfig.save] — `server`, `token`, `master_key` and
+  /// `name` together. Null when [refusal] is not.
+  final Map<String, Object?>? keys;
+
+  /// A sentence saying what was wrong, or null. Modelled on `libraryRefusal`:
+  /// a payload that will not do is a sentence, and nothing is written.
+  final String? refusal;
+
+  static const _refused = 'Nothing has been changed.';
+
+  static Pairing read(String pasted) {
+    final text = pasted.trim();
+    if (text.isEmpty) {
+      return const Pairing._(
+        refusal:
+            'Nothing to pair with — no configuration on the clipboard and '
+            'nothing typed. $_refused',
+      );
+    }
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(text);
+    } on FormatException catch (error) {
+      return Pairing._(
+        refusal:
+            'That is not JSON (${error.message}). In the app, Settings → Sync '
+            '→ Add another device → Copy MCP config puts the whole thing on '
+            'the clipboard. $_refused',
+      );
+    }
+    if (decoded is! Map) {
+      return const Pairing._(
+        refusal: 'That JSON is not an object, so it names no keys. $_refused',
+      );
+    }
+
+    // Bound once, because a closure cannot see the check above: `decoded` is
+    // typed as anything jsonDecode might have returned.
+    final json = decoded;
+    Object? field(List<String> names) {
+      for (final name in names) {
+        if (json.containsKey(name)) return json[name];
+      }
+      return null;
+    }
+
+    // A pairing code says which version it is; the config the app copies has
+    // no version at all, and demanding one would refuse the very thing the
+    // Copy MCP config button exists to produce.
+    final version = field(['version', 'v']);
+    if (version != null && version != 1 && version != 2) {
+      return Pairing._(
+        refusal:
+            'That code says version $version, which this console does not '
+            'know how to read. $_refused',
+      );
+    }
+
+    final server = _pasted(field(['server', 'u']));
+    final token = _pasted(field(['token', 'device_token', 't']));
+    final key = _pasted(field(['master_key', 'k']));
+    // Named rather than counted, as `missing` does it: half a configuration
+    // written into the file is a mirror that still does not start, and now
+    // nobody can see which half was missing.
+    final absent = [
+      if (server == null) 'the sync server',
+      if (token == null) 'the device token',
+      if (key == null) 'the master key',
+    ];
+    if (absent.isNotEmpty) {
+      return Pairing._(
+        refusal:
+            'That leaves out ${absent.join(', ')}. A code a server shows '
+            'carries no key, and a config needs all three. $_refused',
+      );
+    }
+
+    final int length;
+    try {
+      length = base64.decode(key!).length;
+    } on FormatException {
+      return Pairing._(
+        refusal:
+            'The master key is not base64, so this is not one of our '
+            'payloads. $_refused',
+      );
+    }
+    if (length != 32) {
+      // The length and never the value: a refusal is a message on screen, and
+      // this one is about the key itself.
+      return Pairing._(
+        refusal: 'The master key decodes to $length bytes, not 32. $_refused',
+      );
+    }
+
+    return Pairing._(
+      keys: {
+        'server': server,
+        'token': token,
+        'master_key': key,
+        // What the app calls it when nobody named it, so the paired-devices
+        // list has something to show rather than a blank row.
+        'name': _pasted(field(['name', 'from_device', 'd'])) ?? 'MCP mirror',
+      },
+    );
+  }
+}
+
+/// A value only when it is a non-empty string: `config.py` reads a
+/// present-but-empty value as a value, and writing one would be a config that
+/// looks complete and does not start.
+String? _pasted(Object? value) =>
+    value is String && value.trim().isNotEmpty ? value.trim() : null;
 
 String? _first(Map<String, String> env, List<String> keys) {
   for (final key in keys) {

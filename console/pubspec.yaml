@@ -24,6 +24,12 @@ dependencies:
   # already in the app's own lock file and handles the timeouts.
   http: ^1.2.0
 
+  # The Browse… buttons, and nothing else. A directory picker is a native
+  # dialog on every platform this ships to, and the app already depends on
+  # this one — two pickers from two packages in one project is two sets of
+  # platform bugs to learn.
+  file_selector: ^1.1.0
+
   # Vendored, not a git dependency: the token on the build machine cannot read
   # the app's repository metadata, so a `git:` dependency would need a
   # credential nobody has. scripts/sync-ui.sh re-copies it.
