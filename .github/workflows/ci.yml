@@ -9,6 +9,10 @@ jobs:
   python:
     name: Tests
     runs-on: ubuntu-latest
+    # Through env, because the `secrets` context is not available in a step's
+    # `if` and an empty `token:` makes checkout fail rather than skip.
+    env:
+      APP_TOKEN: ${{ secrets.APP_REPO_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -20,13 +24,13 @@ jobs:
       # when it is not there, rather than leaving a silent skip in a green run.
       - name: The app, for the protocol vectors
         id: app
-        if: ${{ secrets.APP_REPO_TOKEN != '' }}
+        if: ${{ env.APP_TOKEN != '' }}
         continue-on-error: true
         uses: actions/checkout@v4
         with:
           repository: dataiza/summareader
           path: .sibling/summareader
-          token: ${{ secrets.APP_REPO_TOKEN }}
+          token: ${{ env.APP_TOKEN }}
 
       - name: Say whether the vectors will be checked
         run: |
@@ -51,6 +55,8 @@ jobs:
   console:
     name: Console
     runs-on: ubuntu-latest
+    env:
+      APP_TOKEN: ${{ secrets.APP_REPO_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -60,13 +66,13 @@ jobs:
       # until somebody looked by hand.
       - name: The app, for the vendored-look check
         id: app
-        if: ${{ secrets.APP_REPO_TOKEN != '' }}
+        if: ${{ env.APP_TOKEN != '' }}
         continue-on-error: true
         uses: actions/checkout@v4
         with:
           repository: dataiza/summareader
           path: .sibling/summareader
-          token: ${{ secrets.APP_REPO_TOKEN }}
+          token: ${{ env.APP_TOKEN }}
 
       - name: Say whether the look will be checked
         run: |
