@@ -26,6 +26,7 @@ Future<void> draw(
   void Function({required bool existing})? onBrowse,
   ValueChanged<String>? onPoll,
   ValueChanged<bool>? onSyncing,
+  void Function(String path, {required bool existing})? onLibrary,
   VoidCallback? onGenerateToken,
 }) async {
   tester.view.physicalSize = const Size(1100, 1200);
@@ -40,6 +41,7 @@ Future<void> draw(
         onToggle: onToggle,
         onPair: onPair,
         onBrowse: onBrowse,
+        onLibrary: onLibrary,
         onPoll: onPoll,
         onSyncing: onSyncing,
         onGenerateToken: onGenerateToken,
@@ -321,6 +323,54 @@ void main() {
     // "Its own copy" is selected in this state, so the dialog is being opened
     // for a directory this mirror will fill.
     expect(asked, isFalse);
+  });
+
+  testWidgets('a mirror on the app\'s library can still choose its own', (
+    tester,
+  ) async {
+    // The way out of that mode: the row was dead there — both segments, the
+    // field and Browse… — so the app's library was the last answer the window
+    // would ever take.
+    (String, bool)? chosen;
+    await draw(
+      tester,
+      ConsoleState(
+        status: 'Not running',
+        running: false,
+        local: false,
+        ownsLibrary: false,
+        libraryPath: '/home/you/.local/share/sk.dataiza.summareader/x.sqlite',
+        stats: formatStats(const {}, '0'),
+        configRows: const [('File', '/home/you/config.json')],
+      ),
+      onLibrary: (path, {required existing}) => chosen = (path, existing),
+    );
+    await openSettings(tester);
+
+    await tester.tap(find.text('Its own copy'));
+    await tester.pump();
+
+    expect(chosen?.$2, isFalse);
+  });
+
+  testWidgets('and the row says read-only where the choice is made', (
+    tester,
+  ) async {
+    await draw(
+      tester,
+      ConsoleState(
+        status: 'Not running',
+        running: false,
+        local: false,
+        ownsLibrary: false,
+        libraryPath: '/home/you/.local/share/sk.dataiza.summareader/x.sqlite',
+        stats: formatStats(const {}, '0'),
+        configRows: const [('File', '/home/you/config.json')],
+      ),
+    );
+    await openSettings(tester);
+
+    expect(find.textContaining('Opened read-only'), findsOneWidget);
   });
 }
 

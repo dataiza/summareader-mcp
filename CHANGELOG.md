@@ -4,6 +4,35 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
+## 0.4.7
+
+### Choosing the app's library was a one-way door
+
+Pointing the console at the app's own library turned off the whole row that
+chose it: both segments, the path field and **Browse…** all went dead together,
+because they were drawn only for a console that runs a mirror — and one reading
+the app's library runs none. The app's library was then the last answer this
+window would ever accept. The row is editable wherever there is a config file
+to write into.
+
+**Its own copy** also handed back the path belonging to the mode it was
+leaving, which in that direction is the app's `.sqlite` file rather than a
+directory a mirror can fill. It goes back to where the config says its own copy
+lives, and finding a library already there is not an obstacle: that one is this
+mirror's own, from before somebody pointed the console at the app's.
+
+**And the row says read-only next to the buttons.** "Opened read-only. Nothing
+here writes to the app's library, and nothing pulls into it" — under the two
+segments, where the decision is made, rather than only in the hint beside them.
+
+### Start at login is not offered inside an AppImage
+
+The unit it writes names the frozen mirror *inside the image's mount*: a path
+that exists only while the window is open, and a different one at every launch.
+So the switch wrote a service that could not start. It is absent there, and
+**This program** says where a service does come from — `scripts/install.sh`
+from the release, which writes the unit around a binary that stays put.
+
 ## 0.4.6
 
 ### The dialog about the menu entry says what it is about to do

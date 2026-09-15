@@ -133,6 +133,10 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   bool _busy = false;
   String _message = '';
 
+  /// Whether the library row is editable: there is a config file to write it
+  /// into, and this console is not reading somebody else's mirror over a port.
+  bool get _canChooseALibrary => _config.fromAFile && _config.remote == null;
+
   /// Whether this console is the machine that holds the library, which is the
   /// only place Start, Stop and Pull mean anything.
   bool get _local =>
@@ -438,7 +442,14 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         // Linux only, and absent rather than greyed out elsewhere: systemd is
         // what this switch writes, and a control that cannot work anywhere on
         // this machine is worse than no control at all.
-        atLogin: _local && Platform.isLinux ? _atLogin : null,
+        // And never in an AppImage: the unit's ExecStart would name the
+        // frozen mirror inside this image's mount, which exists only while
+        // this window is open and is a different path every launch. The
+        // headless install is the answer there, and the section below says
+        // so.
+        atLogin: _local && Platform.isLinux && runningImage() == null
+            ? _atLogin
+            : null,
         message: _message,
         busy: _busy,
         // Both controls exist only for an AppImage: it is the one form that is
@@ -455,8 +466,13 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       onAtLogin: _setAtLogin,
       onBind: (host) => unawaited(_rebind(host, _supervisor!.port)),
       onPort: _setPort,
-      onLibrary: _local ? _setLibrary : null,
-      onBrowse: _local ? _browse : null,
+      // Not `_local`: a console reading the app's own library is not local by
+      // that definition — it runs no mirror — and gating the row on it meant
+      // the mode could be entered and never left. Both segments, the field
+      // and Browse… went dead together, with the app's library the only
+      // answer the window would ever accept again.
+      onLibrary: _canChooseALibrary ? _setLibrary : null,
+      onBrowse: _canChooseALibrary ? _browse : null,
       // Only where there is a file to write into: `--remote` and `--library`
       // name none, and a console reading somebody else's mirror has no
       // business being handed a master key.
@@ -629,11 +645,26 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   Future<void> _setLibrary(String path, {required bool existing}) => _act(
     'moving',
     () async {
-      final trimmed = path.trim();
+      var trimmed = path.trim();
       if (trimmed == _libraryPath && existing == _config.readsALocalLibrary) {
         return '';
       }
-      final refused = libraryRefusal(trimmed, existing: existing);
+
+      // Pressing "Its own copy" hands back the path belonging to the mode
+      // being left, which in that direction is the app's `.sqlite` file — not
+      // a directory this mirror can fill, and the reason this switch used to
+      // refuse itself. Its own copy goes where the config says its own copy
+      // lives, which is the default directory when nothing else says.
+      final readopting = !existing && _config.readsALocalLibrary;
+      if (readopting) trimmed = _config.cacheDir;
+
+      // Adopting the directory the config already names is not making a new
+      // library there, so the "there is already one here" refusal does not
+      // apply to it: that library is this mirror's own, from before somebody
+      // pointed the console at the app's.
+      final refused = readopting && trimmed == _config.cacheDir
+          ? null
+          : libraryRefusal(trimmed, existing: existing);
       if (refused != null) return refused;
 
       // What is stored is the file, even when a directory was given. The

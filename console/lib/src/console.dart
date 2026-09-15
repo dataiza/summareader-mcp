@@ -557,6 +557,19 @@ class _ConsoleViewState extends State<ConsoleView> {
                 ),
               ],
             ),
+            const SizedBox(height: 6),
+            // What the chosen mode means, next to the buttons that choose it.
+            // The long version is the hint beside this row, which is where
+            // somebody looks second; read-only is the fact worth having
+            // where the decision is made.
+            Text(
+              widget.state.ownsLibrary
+                  ? 'This mirror fills this directory by pulling and '
+                        'decrypting. It is the only thing that writes here.'
+                  : 'Opened read-only. Nothing here writes to the app\'s '
+                        'library, and nothing pulls into it.',
+              style: Ar.bodyStyle(12.5, color: Ar.dim(0.6), height: 1.5),
+            ),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -653,7 +666,20 @@ class _ConsoleViewState extends State<ConsoleView> {
     'This program',
     'An AppImage is one file you downloaded, with no package manager behind '
         'it, so keeping itself current is something it has to do for itself.',
-    _card([_updates()]),
+    _card([
+      _row(
+        'Without this window',
+        Text('install.sh', style: Ar.bodyStyle(13, color: Ar.dim(0.75))),
+        hint:
+            'An AppImage carries the mirror inside itself, at a path that '
+            'exists only while this window is open — so it cannot be a '
+            'service, and Start at login is not offered here. Keeping the '
+            'mirror running after a reboot is the headless install: '
+            'scripts/install.sh from the release, which writes the unit '
+            'around a binary that stays put.',
+      ),
+      _updates(),
+    ]),
   );
 
   Widget _updates() => _row(
