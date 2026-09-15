@@ -540,9 +540,26 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
 
     final image = runningImage();
     if (image == null) return;
-    final wanted = await askAboutARepoint(context, menuTarget() ?? '', image);
+    final named = menuTarget() ?? '';
+    // Named before the question is asked, because the dialog says what the
+    // button will do and deleting somebody's file is the part of that worth
+    // saying out loud.
+    final replacing =
+        supersedes(named, '${applicationsDir()}/${image.split('/').last}')
+        ? named.split('/').last
+        : null;
+
+    final wanted = await askAboutARepoint(
+      context,
+      named,
+      image,
+      replacing: replacing,
+    );
     if (!mounted || !wanted) return;
     await _setInMenu(true);
+    // The entry now names where the image was kept, which is the one file
+    // this must never delete.
+    await removeSuperseded(named, menuTarget() ?? '');
   }
 
   /// Offers the menu once, on a first run that is an AppImage.

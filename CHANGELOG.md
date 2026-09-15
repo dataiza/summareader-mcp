@@ -4,6 +4,22 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
+## 0.4.6
+
+### The dialog about the menu entry says what it is about to do
+
+Downloading a new release by hand and running it out of `~/Downloads` is
+installing it, and the dialog that noticed treated it as a discrepancy: two
+paths and a warning about what could break. It now says what pressing the
+button does — moves this copy to `~/Applications` and starts it from the menu
+from now on — and the button says **Use this one**.
+
+**And the copy it replaces is deleted**, when there is one: an AppImage in
+`~/Applications` that the entry named until now. Left alone it is a second
+program a version behind, checking GitHub for itself and startable from a file
+manager. Nothing outside `~/Applications` is ever removed, and never the copy
+the entry now names. The dialog names the file before it happens.
+
 ## 0.4.5
 
 ### Syncing is a switch, and it is not offered where there is nothing to switch

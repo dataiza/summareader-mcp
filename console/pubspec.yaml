@@ -1,7 +1,7 @@
 name: summareader_mcp_console
 description: The mirror in a window, for the machine that holds the library.
 publish_to: none
-version: 0.4.5
+version: 0.4.6
 
 environment:
   sdk: ^3.13.0
