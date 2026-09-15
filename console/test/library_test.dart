@@ -155,11 +155,12 @@ print(json.dumps([row["id"] for row in found["items"]]))
       'rust source:Lime',
       'tag:nothing-has-this',
     ]) {
-      final done = await Process.run(
-        python.path,
-        ['-c', script, '${temporary.path}/library.sqlite', query],
-        workingDirectory: repositoryRoot.path,
-      );
+      final done = await Process.run(python.path, [
+        '-c',
+        script,
+        '${temporary.path}/library.sqlite',
+        query,
+      ], workingDirectory: repositoryRoot.path);
       expect(done.exitCode, 0, reason: '${done.stderr}');
       expect(
         await ids(query),
@@ -168,5 +169,4 @@ print(json.dumps([row["id"] for row in found["items"]]))
       );
     }
   });
-
 }

@@ -152,8 +152,13 @@ void main() {
     // default nobody typed.
     expect(Options.parse(const []).host, isNull);
     expect(Options.parse(const []).port, isNull);
-    expect(Options.parse(const ['--host=0.0.0.0', '--port', '9000']).host,
-        '0.0.0.0');
-    expect(Options.parse(const ['--host=0.0.0.0', '--port', '9000']).port, 9000);
+    expect(
+      Options.parse(const ['--host=0.0.0.0', '--port', '9000']).host,
+      '0.0.0.0',
+    );
+    expect(
+      Options.parse(const ['--host=0.0.0.0', '--port', '9000']).port,
+      9000,
+    );
   });
 }

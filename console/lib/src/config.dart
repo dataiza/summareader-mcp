@@ -122,7 +122,8 @@ class MirrorConfig {
 
     return MirrorConfig(
       file: path,
-      cacheDir: pick('cache_dir', 'SUMMAREADER_MCP_CACHE') ?? defaultCacheDir(env),
+      cacheDir:
+          pick('cache_dir', 'SUMMAREADER_MCP_CACHE') ?? defaultCacheDir(env),
       server: pick('server', 'SUMMAREADER_SYNC_URL'),
       token: pick('token', 'SUMMAREADER_DEVICE_TOKEN'),
       masterKey: pick('master_key', 'SUMMAREADER_MASTER_KEY'),
@@ -169,10 +170,10 @@ class MirrorConfig {
   /// two answers to "which library", and `config.py` would take the read-only
   /// one, which is not what somebody asking for a new one meant.
   void saveLibrary({String? library, String? cacheDir}) => save(
-        library != null
-            ? {'library': library, 'cache_dir': null}
-            : {'cache_dir': cacheDir, 'library': null},
-      );
+    library != null
+        ? {'library': library, 'cache_dir': null}
+        : {'cache_dir': cacheDir, 'library': null},
+  );
 
   /// Writes these keys and leaves the rest of the file exactly as it was.
   ///
@@ -186,8 +187,10 @@ class MirrorConfig {
       try {
         decoded = jsonDecode(handle.readAsStringSync());
       } on FormatException catch (error) {
-        throw StateError('$file is not valid JSON (${error.message}) — '
-            'nothing written. Fix it and try again.');
+        throw StateError(
+          '$file is not valid JSON (${error.message}) — '
+          'nothing written. Fix it and try again.',
+        );
       }
       if (decoded is! Map<String, dynamic>) {
         throw StateError('$file is not a JSON object — nothing written.');

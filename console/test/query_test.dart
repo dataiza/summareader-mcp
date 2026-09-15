@@ -62,11 +62,9 @@ void main() {
   test('a date it cannot read says what to type instead', () {
     expect(
       () => parseQuery('since:whenever'),
-      throwsA(isA<BadSince>().having(
-        (e) => e.message,
-        'message',
-        contains('3h, 7d'),
-      )),
+      throwsA(
+        isA<BadSince>().having((e) => e.message, 'message', contains('3h, 7d')),
+      ),
     );
   });
 

@@ -156,7 +156,9 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       // An address that came out of the file gets the same refusal as one
       // chosen in the window — said now rather than at the first click, since
       // the file is where a wide bind with no token most easily hides.
-      _message = _message.isEmpty ? (_refusal(supervisor.host) ?? '') : _message;
+      _message = _message.isEmpty
+          ? (_refusal(supervisor.host) ?? '')
+          : _message;
       // The one hook that closes the loop the review opened an hour ago: a
       // child started here dies here, and a server systemd owns is left alone.
       _lifecycle = AppLifecycleListener(
