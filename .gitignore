@@ -25,3 +25,4 @@ dist/
 # Flutter writes these when a golden test fails. They are the failure, not the
 # artefact — regenerating the golden is what fixes it.
 console/test/failures/
+out/

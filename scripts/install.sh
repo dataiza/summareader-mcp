@@ -6,7 +6,7 @@
 # plaintext copy of the library, so it belongs to one person and needs no root
 # to install, inspect or remove.
 #
-# `--docker` runs it as a container instead — no Dart SDK on the machine, and
+# `--docker` runs it as a container instead — no Python on the machine, and
 # the same image the compose file describes.
 #
 #   BIN_DIR=…   where the compiled binary goes  (default ~/.local/bin)
@@ -16,7 +16,18 @@
 #   HOST=…      the address it binds            (default 127.0.0.1)
 set -euo pipefail
 
-repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Two layouts, one script. In a checkout this file is in scripts/ and the
+# repository is its parent; in a released headless bundle everything is flat
+# beside it. Told apart by the unit template, which this script cannot work
+# without either way.
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$here/summareader-mcp.service" ]; then
+  repo="$here"
+  unit_template="$here/summareader-mcp.service"
+else
+  repo="$(cd "$here/.." && pwd)"
+  unit_template="$repo/scripts/summareader-mcp.service"
+fi
 cd "$repo"
 
 # mise puts the toolchains on PATH from a login shell only, and this is a
@@ -114,21 +125,37 @@ esac
 
 mkdir -p "$bin_dir" "$unit_dir" "$cache_dir"
 
-# Its own virtualenv, and the console script from it: a service should not
-# depend on what happens to be installed system-wide, and should not have its
-# dependencies changed by something else on the machine.
-venv_dir="$cache_dir/venv"
-python3 -m venv "$venv_dir"
-"$venv_dir/bin/pip" install --quiet --upgrade pip
-"$venv_dir/bin/pip" install --quiet .
-ln -sf "$venv_dir/bin/$name" "$bin_dir/$name"
+# Two ways to end up with a binary, and which one is available says which
+# layout this is.
+#
+# From source: its own virtualenv, and the console script out of it. A service
+# should not depend on what happens to be installed system-wide, and should not
+# have its dependencies changed by something else on the machine.
+#
+# From a released bundle: the frozen executable beside this script, which
+# carries its own interpreter and needs no Python on the machine at all. That
+# is the whole point of freezing it, and installing a venv here would ask for
+# an interpreter the bundle exists to avoid needing.
+if [ -f "$repo/pyproject.toml" ]; then
+  venv_dir="$cache_dir/venv"
+  python3 -m venv "$venv_dir"
+  "$venv_dir/bin/pip" install --quiet --upgrade pip
+  "$venv_dir/bin/pip" install --quiet .
+  ln -sf "$venv_dir/bin/$name" "$bin_dir/$name"
+elif [ -x "$repo/$name" ]; then
+  echo "Installing the frozen binary beside this script — no Python needed."
+  install -m 755 "$repo/$name" "$bin_dir/$name"
+else
+  echo "Neither source to install from nor a binary beside this script." >&2
+  exit 1
+fi
 
 sed -e "s|@BIN@|$bin_dir/$name|g" \
     -e "s|@CONFIG@|$config|g" \
     -e "s|@CACHE@|$cache_dir|g" \
     -e "s|@PORT@|$port|g" \
     -e "s|@HOST@|$host|g" \
-    scripts/$name.service >"$unit_dir/$name.service"
+    "$unit_template" >"$unit_dir/$name.service"
 
 systemctl --user daemon-reload
 systemctl --user enable --now "$name.service"

@@ -1,0 +1,55 @@
+# An MCP server over your SummaReader library, from a released bundle.
+#
+#   cp summareader-mcp.example.json summareader-mcp.local.json   # then fill it in
+#   docker compose up -d
+#
+# The Dockerfile beside this one installs the wheel in the bundle rather than
+# building anything, so this needs no source and no Python on the host.
+
+services:
+  mcp:
+    build: .
+    image: summareader-mcp:release
+    restart: unless-stopped
+
+    # As whoever owns ./.cache, so a CLI on the host and the container share
+    # one library. Override when that is not this user.
+    user: "${MCP_UID:-1000}:${MCP_GID:-1000}"
+
+    ports:
+      # Localhost only, and not negotiable without thinking hard first. This
+      # process holds the master key, so anything that can reach the port and
+      # pass its check can read the entire library in plaintext — and with no
+      # `bearer_token` in the config there is no check to pass. The encryption
+      # ends here; that is what this server is for, and why it needs a boundary
+      # of its own.
+      - "127.0.0.1:${MCP_PORT:-8100}:8100"
+
+    volumes:
+      # The secrets, read-only, as a file rather than environment variables:
+      # `docker inspect` prints an environment, and a mounted file can be given
+      # permissions.
+      - ./summareader-mcp.local.json:/config/summareader-mcp.json:ro
+      # The decrypted cache. A directory rather than a named volume, so a CLI
+      # run on the host reads the same library the container holds rather than
+      # an empty second one.
+      - ./.cache:/cache
+
+    healthcheck:
+      # /health needs no token: it says whether the process is up and nothing
+      # about what it holds, and a health check that needs a secret is one that
+      # breaks the day the secret rotates.
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8100/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+    security_opt:
+      - no-new-privileges:true
+
+    # Reaching the sync server. The common case is one somewhere else entirely,
+    # reached by URL; this is for when it genuinely is on this host and
+    # published on an interface a container can route to.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
