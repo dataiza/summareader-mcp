@@ -13,6 +13,7 @@ from summareader_mcp.config import (
     ConfigError,
     default_cache_dir,
     default_config_path,
+    stranded_library,
 )
 
 KEY = base64.b64encode(bytes(range(32))).decode()
@@ -258,27 +259,66 @@ class TestWhereItLooksWhenNobodySays:
     they want things in the environment.
     """
 
-    def test_linux_follows_xdg(self, tmp_path):
-        env = {"XDG_CONFIG_HOME": str(tmp_path / "c"), "XDG_CACHE_HOME": str(tmp_path / "k")}
+    def test_linux_puts_the_library_in_the_data_directory(self, tmp_path):
+        """Not the cache directory, which is what this asserted before.
+
+        The mirror runs no retention, so it is the most complete copy of a
+        library rather than a subset of one — and ~/.cache is exactly what a
+        disk cleaner empties. The config file stays where it was.
+        """
+        env = {
+            "XDG_CONFIG_HOME": str(tmp_path / "c"),
+            "XDG_DATA_HOME": str(tmp_path / "d"),
+            # Still set, and still ignored for the library: proving the move
+            # rather than the absence of the old variable.
+            "XDG_CACHE_HOME": str(tmp_path / "k"),
+        }
         assert default_config_path(platform="linux", environment=env) == (
             tmp_path / "c/summareader-mcp/summareader-mcp.json"
         )
         assert default_cache_dir(platform="linux", environment=env) == (
-            tmp_path / "k/summareader-mcp"
+            tmp_path / "d/summareader-mcp"
         )
+
+    def test_a_relative_xdg_data_home_is_ignored(self):
+        """The specification says absolute.
+
+        Resolving a relative one against the working directory is how a server
+        started from two different shells ends up with two libraries and no way
+        to tell which is which.
+        """
+        got = default_cache_dir(
+            platform="linux", environment={"XDG_DATA_HOME": "relative/share"}
+        )
+        assert got == Path.home() / ".local/share/summareader-mcp"
 
     def test_macos_uses_the_user_library(self):
         path = default_config_path(platform="darwin", environment={})
         assert "Library/Application Support/summareader-mcp" in str(path)
         assert str(path).startswith(str(Path.home()))
 
+    def test_macos_keeps_both_in_one_directory(self):
+        """What this platform offers, taken rather than fought.
+
+        There is no separate data location on macOS worth the name, so the
+        config file and library.sqlite sit side by side — which is what the
+        sync server's console already calls "one directory is the whole
+        installation".
+        """
+        data = default_cache_dir(platform="darwin", environment={})
+        config = default_config_path(platform="darwin", environment={})
+        assert data == config.parent
+        assert "Library/Caches" not in str(data)
+
     def test_windows_uses_appdata(self, tmp_path):
         env = {"APPDATA": str(tmp_path / "Roaming"), "LOCALAPPDATA": str(tmp_path / "Local")}
         assert default_config_path(platform="win32", environment=env) == (
             tmp_path / "Roaming/summareader-mcp/summareader-mcp.json"
         )
+        # The trailing "cache" component is gone with the name: it is the data
+        # directory now, and LOCALAPPDATA is where that belongs.
         assert default_cache_dir(platform="win32", environment=env) == (
-            tmp_path / "Local/summareader-mcp/cache"
+            tmp_path / "Local/summareader-mcp"
         )
 
     def test_nothing_defaulted_is_an_absolute_posix_path(self):
@@ -307,3 +347,46 @@ class TestWhereItLooksWhenNobodySays:
             file=None, environment={"SUMMAREADER_MCP_CONFIG": str(config)}
         )
         assert loaded.server == "https://sync.example"
+
+
+class TestTheLibraryLeftBehind:
+    """The move out of the cache directory does not take the library with it.
+
+    Nothing is moved and nothing is deleted: this is the only complete copy of
+    somebody's reading, and relocating it unattended is the one operation in
+    that change with no undo. It is named instead, once, on stderr.
+    """
+
+    def test_an_old_library_is_named_when_the_new_place_is_empty(self, tmp_path):
+        old = tmp_path / "cache/summareader-mcp"
+        old.mkdir(parents=True)
+        (old / "library.sqlite").write_bytes(b"")
+
+        config = Config.load(
+            file=write(tmp_path),
+            environment={"SUMMAREADER_MCP_CACHE": str(tmp_path / "data")},
+        )
+        found = stranded_library(config, {"XDG_CACHE_HOME": str(tmp_path / "cache")})
+        assert found == old / "library.sqlite"
+
+    def test_nothing_is_said_once_the_new_one_exists(self, tmp_path):
+        """Otherwise it would say it on every start, for ever."""
+        old = tmp_path / "cache/summareader-mcp"
+        old.mkdir(parents=True)
+        (old / "library.sqlite").write_bytes(b"")
+        new = tmp_path / "data"
+        new.mkdir()
+        (new / "library.sqlite").write_bytes(b"")
+
+        config = Config.load(
+            file=write(tmp_path),
+            environment={"SUMMAREADER_MCP_CACHE": str(new)},
+        )
+        assert stranded_library(config, {"XDG_CACHE_HOME": str(tmp_path / "cache")}) is None
+
+    def test_no_old_library_is_not_a_finding(self, tmp_path):
+        config = Config.load(
+            file=write(tmp_path),
+            environment={"SUMMAREADER_MCP_CACHE": str(tmp_path / "data")},
+        )
+        assert stranded_library(config, {"XDG_CACHE_HOME": str(tmp_path / "nowhere")}) is None

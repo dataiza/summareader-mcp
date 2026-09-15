@@ -25,20 +25,53 @@ def _home(platform: str, env: dict[str, str]) -> tuple[Path, Path]:
     macOS they belong to root and cannot be created by the app that needs them.
     The container keeps its old paths by passing the environment variables
     below — see the Dockerfile.
+
+    The second of the pair is the **data** directory, and used to be the cache
+    one. It is still spelled `cache_dir` everywhere, including in the config
+    file and in SUMMAREADER_MCP_CACHE, and that mismatch is deliberate:
+    renaming it would touch two Dockerfiles, two compose files, the systemd
+    unit, run.sh, freeze.sh and every install that already exists, to change a
+    spelling.
+
+    The move is not cosmetic. This repository's own CHANGELOG says the mirror
+    "runs no retention, so it is the most complete copy of a library rather
+    than a subset of one — the cache directory deserves the care the library
+    does". ~/.cache is precisely what a disk cleaner empties, and rebuilding
+    costs every blob downloaded again.
+
+    `platformdirs` would answer this in one line and is installed — but only as
+    a transitive dependency of `textual`, which is the terminal interface. A
+    headless server importing a GUI library's transitive dependency to find a
+    path is a dependency nobody declared, so the branch stays written out.
     """
     if platform == "win32":
         base = Path(env.get("APPDATA") or Path.home() / "AppData/Roaming")
-        cache = Path(env.get("LOCALAPPDATA") or Path.home() / "AppData/Local")
-        return base / NAME, cache / NAME / "cache"
+        data = Path(env.get("LOCALAPPDATA") or Path.home() / "AppData/Local")
+        return base / NAME, data / NAME
     if platform == "darwin":
-        return (
-            Path.home() / "Library/Application Support" / NAME,
-            Path.home() / "Library/Caches" / NAME,
-        )
+        # One directory for both, which is what this platform offers and what
+        # the sync server's console already calls "one directory is the whole
+        # installation". The config file and library.sqlite sit side by side.
+        base = Path.home() / "Library/Application Support" / NAME
+        return base, base
     return (
         Path(env.get("XDG_CONFIG_HOME") or Path.home() / ".config") / NAME,
-        Path(env.get("XDG_CACHE_HOME") or Path.home() / ".cache") / NAME,
+        Path(_xdg_data_home(env)) / NAME,
     )
+
+
+def _xdg_data_home(env: dict[str, str]) -> Path:
+    """XDG_DATA_HOME when it is absolute, else the ~/.local/share it defines.
+
+    Relative is ignored rather than resolved. The specification requires an
+    absolute path, and resolving a relative one against the working directory
+    is how a server started from two different shells ends up with two
+    libraries and no way to tell which is which.
+    """
+    named = env.get("XDG_DATA_HOME") or ""
+    if named.startswith("/"):
+        return Path(named)
+    return Path.home() / ".local/share"
 
 
 def default_config_path(
@@ -242,3 +275,24 @@ def _master_key(encoded: str) -> bytes:
     if len(raw) != 32:
         raise ConfigError(f"master_key is 32 bytes, not {len(raw)}")
     return raw
+
+
+def stranded_library(config: "Config", environment: dict[str, str] | None = None) -> Path | None:
+    """The library left behind by the move out of the cache directory.
+
+    Returns the old path when it holds a library and the new one does not, so
+    the caller can say where it is. Nothing is moved and nothing is deleted
+    here: this is the only complete copy of somebody's reading, and relocating
+    it unattended is the one operation in this change with no undo.
+
+    Rebuilding is what happens if it is ignored — the mirror is reconstructible
+    from the log — and that costs every blob downloaded again, which is a thing
+    to be told about rather than to discover from a progress bar.
+    """
+    env = dict(os.environ if environment is None else environment)
+    if config.database.exists():
+        return None
+    old = Path(env.get("XDG_CACHE_HOME") or Path.home() / ".cache") / NAME
+    stranded = old / "library.sqlite"
+    return stranded if stranded.exists() and old != config.cache_dir else None
+

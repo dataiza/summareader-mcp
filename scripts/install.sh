@@ -11,7 +11,8 @@
 #
 #   BIN_DIR=…   where the compiled binary goes  (default ~/.local/bin)
 #   CONFIG=…    the secrets file                (default ./summareader-mcp.local.json)
-#   CACHE_DIR=… the decrypted mirror            (default ~/.cache/summareader-mcp)
+#   CACHE_DIR=… the decrypted library            (default ~/.local/share/summareader-mcp)
+#   VENV_DIR=…  a source install's virtualenv    (default ~/.local/lib/summareader-mcp)
 #   PORT=…      what it listens on              (default 8100)
 #   HOST=…      the address it binds            (default 127.0.0.1)
 set -euo pipefail
@@ -38,7 +39,7 @@ name="summareader-mcp"
 bin_dir="${BIN_DIR:-$HOME/.local/bin}"
 unit_dir="$HOME/.config/systemd/user"
 config="${CONFIG:-$repo/$name.local.json}"
-cache_dir="${CACHE_DIR:-$HOME/.cache/$name}"
+cache_dir="${CACHE_DIR:-$HOME/.local/share/$name}"
 port="${PORT:-8100}"
 host="${HOST:-127.0.0.1}"
 
@@ -89,9 +90,14 @@ fi
 if [ "${1:-}" = "--uninstall" ]; then
   systemctl --user disable --now "$name.service" 2>/dev/null || true
   rm -f "$unit_dir/$name.service" "$bin_dir/$name"
+  rm -rf "${VENV_DIR:-$HOME/.local/lib/$name}"
   systemctl --user daemon-reload
-  echo "removed: the service and the binary."
-  echo "kept:    $cache_dir — a cache, safe to delete; and $config, which is not."
+  echo "removed: the service, the binary and its virtualenv."
+  # Not "safe to delete" any more, and it never was for a source install: the
+  # virtualenv used to be in here. It is also the most complete copy of the
+  # library, because a mirror runs no retention.
+  echo "kept:    $cache_dir — the decrypted library; and $config, which holds"
+  echo "         the master key. Neither is recoverable from the other."
   exit 0
 fi
 
@@ -137,7 +143,15 @@ mkdir -p "$bin_dir" "$unit_dir" "$cache_dir"
 # is the whole point of freezing it, and installing a venv here would ask for
 # an interpreter the bundle exists to avoid needing.
 if [ -f "$repo/pyproject.toml" ]; then
-  venv_dir="$cache_dir/venv"
+  # Not inside $cache_dir. It lived there, and the uninstall message below
+  # called that same directory "a cache, safe to delete" — so following this
+  # installer's own advice removed the virtualenv that $bin_dir/summareader-mcp
+  # is a symlink into, and the command stopped existing.
+  #
+  # Its own directory: it is neither the library nor a cache, it is an
+  # installation, and it should go when the program goes rather than when
+  # somebody tidies up.
+  venv_dir="${VENV_DIR:-$HOME/.local/lib/$name}"
   python3 -m venv "$venv_dir"
   "$venv_dir/bin/pip" install --quiet --upgrade pip
   "$venv_dir/bin/pip" install --quiet .

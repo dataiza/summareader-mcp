@@ -209,6 +209,7 @@ def _serve(args) -> int:
     from .server import serve
 
     config = _config(args)
+    _say_where(config)
     # Flag, then environment, then file, then default — the last three are
     # Config.load's order already, so this line only has to add the flag.
     return serve(
@@ -217,6 +218,30 @@ def _serve(args) -> int:
         host=getattr(args, "host", None) or config.host,
         port=getattr(args, "port", None) or config.port,
     )
+
+
+def _say_where(config) -> None:
+    """Which library this is, said out loud, once.
+
+    The window asks where the mirror should go on its first run. A server
+    started over ssh has nobody to ask, so it takes the default and says which
+    one it took — that is the whole of the headless half of the same question.
+
+    And if the move out of ~/.cache left one behind, it names that too. The old
+    one is not adopted and not moved: this is the most complete copy of
+    somebody's library, and an unattended relocation of it is the one operation
+    here with no undo.
+    """
+    from .config import stranded_library
+
+    print(f"summareader-mcp: library in {config.database}", file=sys.stderr)
+    if (old := stranded_library(config)) is not None:
+        print(
+            f"summareader-mcp: an older library is still at {old} — "
+            "this one starts empty and rebuilds from the log. Copy it over "
+            "instead if you would rather not re-download everything.",
+            file=sys.stderr,
+        )
 
 
 def _ui(args) -> int:
