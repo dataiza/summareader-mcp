@@ -444,6 +444,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         // Both controls exist only for an AppImage: it is the one form that is
         // a single file this program owns, so replacing it and registering it
         // are things it can honestly offer to do.
+        syncing: _config.syncing,
         pollSeconds: _config.pollSeconds,
         updatable: runningImage() != null,
       ),
@@ -460,8 +461,11 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       // name none, and a console reading somebody else's mirror has no
       // business being handed a master key.
       onPair: _config.fromAFile ? _pair : null,
-      // Both write the config file, so both are absent when there is none.
-      onPoll: _config.fromAFile ? _setPoll : null,
+      // They write the config file, so they are absent when there is none —
+      // and when this mirror reads the app's own library, where the server
+      // starts no loop to schedule at all.
+      onPoll: _config.fromAFile && _local ? _setPoll : null,
+      onSyncing: _config.fromAFile && _local ? _setSyncing : null,
       onGenerateToken: _config.fromAFile ? _generateToken : null,
       onCheckUpdates: _checkUpdates,
     );
@@ -692,6 +696,16 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     await _reopen();
     return 'paired with ${_config.server}';
   });
+
+  /// Whether it pulls on its own at all.
+  Future<void> _setSyncing(bool on) =>
+      _act(on ? 'starting' : 'stopping', () async {
+        _config.saveSyncing(on: on);
+        // Rebuilt around the new answer, the way every other config write here
+        // is: the loop belongs to the running mirror, not to this window.
+        await _reopen();
+        return on ? 'syncing on' : 'syncing off — Sync now still pulls';
+      });
 
   /// How often the mirror pulls on its own.
   ///

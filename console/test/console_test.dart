@@ -25,6 +25,7 @@ Future<void> draw(
   ValueChanged<String>? onPair,
   void Function({required bool existing})? onBrowse,
   ValueChanged<String>? onPoll,
+  ValueChanged<bool>? onSyncing,
   VoidCallback? onGenerateToken,
 }) async {
   tester.view.physicalSize = const Size(1100, 1200);
@@ -40,6 +41,7 @@ Future<void> draw(
         onPair: onPair,
         onBrowse: onBrowse,
         onPoll: onPoll,
+        onSyncing: onSyncing,
         onGenerateToken: onGenerateToken,
       ),
     ),
@@ -67,27 +69,65 @@ Future<void> openSettings(WidgetTester tester) async {
 void main() {
   _thisProgram();
 
+  ConsoleState withAFile({bool syncing = true, bool ownsLibrary = true}) =>
+      ConsoleState(
+        status: 'Not running',
+        running: false,
+        local: ownsLibrary,
+        ownsLibrary: ownsLibrary,
+        stats: formatStats(const {'items': 3}, '7'),
+        configRows: const [('File', '/home/you/config.json')],
+        syncing: syncing,
+        pollSeconds: 900,
+      );
+
   testWidgets('the interval and the token are there when a file is', (
     tester,
   ) async {
     await draw(
       tester,
-      ConsoleState(
-        status: 'Not running',
-        running: false,
-        local: true,
-        stats: formatStats(const {'items': 3}, '7'),
-        configRows: const [('File', '/home/you/config.json')],
-        pollSeconds: 900,
-      ),
+      withAFile(),
       onPoll: (_) {},
+      onSyncing: (_) {},
       onGenerateToken: () {},
     );
     await openSettings(tester);
 
+    expect(find.text('Sync automatically'), findsWidgets);
     expect(find.text('Sync every'), findsOneWidget);
     expect(find.text('900'), findsOneWidget);
     expect(find.text('Generate'), findsOneWidget);
+  });
+
+  testWidgets('and the interval goes with the loop it schedules', (
+    tester,
+  ) async {
+    // Switched off there is no loop, so how often it would have run is a
+    // number about nothing.
+    await draw(
+      tester,
+      withAFile(syncing: false),
+      onPoll: (_) {},
+      onSyncing: (_) {},
+    );
+    await openSettings(tester);
+
+    expect(find.text('Sync automatically'), findsWidgets);
+    expect(find.text('Sync every'), findsNothing);
+  });
+
+  testWidgets('a mirror reading the app\'s library has neither', (
+    tester,
+  ) async {
+    // It opens that file read-only and the server starts no loop over it, so
+    // a switch and an interval would both be controls over nothing — and the
+    // section says whose library it is instead.
+    await draw(tester, withAFile(ownsLibrary: false));
+    await openSettings(tester);
+
+    expect(find.text('Sync automatically'), findsNothing);
+    expect(find.text('Sync every'), findsNothing);
+    expect(find.textContaining('owns this library'), findsOneWidget);
   });
 
   testWidgets('and absent when there is no file to write into', (tester) async {

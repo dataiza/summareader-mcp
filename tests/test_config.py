@@ -146,6 +146,21 @@ class TestBodies:
         assert not config.fetch_bodies
 
 
+class TestSyncing:
+    def test_on_by_default(self, tmp_path):
+        assert Config.load(file=write(tmp_path), environment={}).sync
+
+    def test_the_file_can_switch_it_off(self, tmp_path):
+        # A JSON false, not a "false" — the same trap `fetch_bodies` fell into.
+        assert not Config.load(file=write(tmp_path, sync=False), environment={}).sync
+
+    def test_and_so_can_the_environment(self, tmp_path):
+        config = Config.load(
+            file=write(tmp_path), environment={"SUMMAREADER_MCP_SYNC": "false"}
+        )
+        assert not config.sync
+
+
 class TestTheAddressItBinds:
     """The console edits these, so the file has to hold them.
 

@@ -68,6 +68,11 @@ def serve(
 
     if config.reads_a_local_library:
         log.info("reading %s, read-only; not syncing", config.database)
+    elif not config.sync:
+        # Said rather than silent: a mirror that holds still looks exactly like
+        # a mirror whose sync server is unreachable, and the difference is
+        # whether anybody chose it.
+        log.info("syncing is off; holding what is already here")
     else:
         syncer = Syncer(config, store, metrics)
         syncer.start()

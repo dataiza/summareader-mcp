@@ -29,6 +29,7 @@ class MirrorConfig {
     this.masterKey,
     this.instanceName,
     this.bearerToken,
+    this.syncing = true,
     this.pollSeconds = 300,
     this.library,
     this.remote,
@@ -49,6 +50,9 @@ class MirrorConfig {
   final String? masterKey;
   final String? instanceName;
   final String? bearerToken;
+
+  /// Whether the mirror pulls at all. Off is a mirror holding what it has.
+  final bool syncing;
 
   /// How often the mirror pulls, in seconds. The Python side's default is 300
   /// and this matches it — a window that showed a different number from the
@@ -179,6 +183,12 @@ class MirrorConfig {
       bearerToken:
           pick('bearer_token', 'SUMMAREADER_MCP_TOKEN') ??
           pick('http_token', 'SUMMAREADER_MCP_TOKEN'),
+      // Any spelling `config.py` treats as false, and nothing said is on.
+      syncing: !const [
+        'false',
+        '0',
+        'no',
+      ].contains((pick('sync', 'SUMMAREADER_MCP_SYNC') ?? '').toLowerCase()),
       // The same default `config.py` holds. A window showing a different
       // number from the one the mirror uses would be worse than showing none.
       pollSeconds:
@@ -221,6 +231,9 @@ class MirrorConfig {
         ? {'library': library, 'cache_dir': null}
         : {'cache_dir': cacheDir, 'library': null},
   );
+
+  /// Whether the mirror pulls on its own at all.
+  void saveSyncing({required bool on}) => save({'sync': on});
 
   /// How often the mirror pulls, in seconds.
   void savePoll(int seconds) => save({'poll_seconds': seconds});

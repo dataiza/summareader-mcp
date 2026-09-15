@@ -75,6 +75,7 @@ master key is written without ever being shown.
 | `bearer_token` | `SUMMAREADER_MCP_TOKEN` | the credential the HTTP port demands (`http_token` is the old spelling, still read) |
 | `host` | `SUMMAREADER_MCP_HOST` | what `serve --transport=http` binds. `127.0.0.1` by default |
 | `port` | `SUMMAREADER_MCP_PORT` | the port it binds. `8100` by default |
+| `sync` | `SUMMAREADER_MCP_SYNC` | pull on a loop at all. `true` by default; `false` holds what is already here |
 | `poll_seconds` | `SUMMAREADER_MCP_POLL` | how often it pulls. `300` by default |
 | `fetch_bodies` | `SUMMAREADER_MCP_BODIES` | download article text as well as summaries. `true` by default |
 | `library` | `SUMMAREADER_MCP_LIBRARY` | read a library file that is already here, read-only, and do not sync. With it set, nothing above is required |

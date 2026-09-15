@@ -121,6 +121,28 @@ def test_reading_a_local_library_does_not_start_syncing(started, tmp_path, caplo
     assert any("not syncing" in r.message for r in caplog.records)
 
 
+def test_syncing_can_be_switched_off(started, tmp_path, caplog, monkeypatch):
+    # A mirror with a server and a key, told to hold still. No thread starts,
+    # and it says so — a mirror that holds looks exactly like one whose sync
+    # server is unreachable, and the difference is whether anybody chose it.
+    started_threads: list = []
+    monkeypatch.setattr(
+        server_module.Syncer, "start", lambda self: started_threads.append(self)
+    )
+    config = Config(
+        server="https://sync.example",
+        token="t",
+        master_key=b"\0" * 32,
+        cache_dir=tmp_path,
+        library=None,
+        sync=False,
+    )
+    with caplog.at_level("INFO"):
+        server_module.serve(config)
+    assert started_threads == []
+    assert any("syncing is off" in r.message for r in caplog.records)
+
+
 class TestTheSyncLoop:
     """It has to be stoppable, and it has to pull when asked.
 

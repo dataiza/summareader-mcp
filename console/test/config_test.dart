@@ -179,9 +179,36 @@ void main() {
       );
     });
 
+    test('pulling at all is a key too, on unless it says otherwise', () {
+      final file = write(dir, '{"sync": false}');
+      expect(
+        MirrorConfig.load(file: file.path, environment: const {}).syncing,
+        isFalse,
+      );
+      expect(
+        MirrorConfig.load(
+          file: '${dir.path}/absent.json',
+          environment: const {},
+        ).syncing,
+        isTrue,
+      );
+      // The spellings `config.py` treats as false, and no others.
+      expect(
+        MirrorConfig.load(
+          file: '${dir.path}/absent.json',
+          environment: const {'SUMMAREADER_MCP_SYNC': 'no'},
+        ).syncing,
+        isFalse,
+      );
+    });
+
     test('writing either leaves the rest of the file alone', () {
       final file = write(dir, _full);
       MirrorConfig.load(file: file.path, environment: const {}).savePoll(120);
+      MirrorConfig.load(
+        file: file.path,
+        environment: const {},
+      ).saveSyncing(on: false);
       MirrorConfig.load(
         file: file.path,
         environment: const {},
@@ -189,6 +216,7 @@ void main() {
 
       final after = MirrorConfig.load(file: file.path, environment: const {});
       expect(after.pollSeconds, 120);
+      expect(after.syncing, isFalse);
       expect(after.bearerToken, 'generated');
       // Including the master key, which is the one this must never touch.
       expect(after.masterKey, 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=');

@@ -4,6 +4,23 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
+## 0.4.5
+
+### Syncing is a switch, and it is not offered where there is nothing to switch
+
+**Sync automatically**, in The server, turns the pulling loop on and off. Off
+is a mirror that holds what it already has and asks for nothing — while a sync
+server is down, or on a machine that should read a library and never add to it.
+Sync now still pulls, and so does `pull` on the command line: this is the loop,
+not the verb. The key is `sync`, `SUMMAREADER_MCP_SYNC` in the environment, and
+the interval below it is hidden while the loop is off, because how often a loop
+that does not run would have run is a number about nothing.
+
+**A mirror reading the app's own library shows neither.** It opens that file
+read-only and has never started a loop over it — the server has said "reading
+…, read-only; not syncing" since that mode existed — but the window went on
+offering the schedule anyway. The section now says whose library it is instead.
+
 ## 0.4.4
 
 ### How often it pulls, and a token it can make for you

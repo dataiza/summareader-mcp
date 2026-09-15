@@ -35,6 +35,7 @@ class ConsoleState {
     this.atLogin,
     this.message = '',
     this.busy = false,
+    this.syncing = true,
     this.pollSeconds = 300,
     this.updatable = false,
   });
@@ -55,7 +56,8 @@ class ConsoleState {
   final List<(String, String)> stats;
   final List<(String, String)> configRows;
 
-  /// How often the mirror pulls, in seconds.
+  /// Whether the mirror pulls on its own, and how often when it does.
+  final bool syncing;
   final int pollSeconds;
 
   /// Whether this console can update and register itself — true only when it
@@ -99,6 +101,7 @@ class ConsoleView extends StatefulWidget {
     this.onLibrary,
     this.onPair,
     this.onPoll,
+    this.onSyncing,
     this.onGenerateToken,
     this.onCheckUpdates,
     this.onBrowse,
@@ -132,6 +135,10 @@ class ConsoleView extends StatefulWidget {
   /// Seconds between pulls, typed. Null for the same reason [onPair] is —
   /// there is no file to write it into.
   final ValueChanged<String>? onPoll;
+
+  /// Turn the pulling loop on and off. Null alongside [onPoll], and also when
+  /// this mirror reads the app's own library — there is no loop to switch.
+  final ValueChanged<bool>? onSyncing;
 
   /// Mint a bearer token and write it. Null where there is no config file.
   final VoidCallback? onGenerateToken;
@@ -364,7 +371,11 @@ class _ConsoleViewState extends State<ConsoleView> {
     widget.state.local
         ? 'The mirror runs as its own process, started with exactly the '
               'command the systemd unit holds.'
-        : 'Somewhere else — this console is reading, not running anything.',
+        : widget.state.ownsLibrary
+        ? 'Somewhere else — this console is reading, not running anything.'
+        : 'The app on this machine owns this library and fills it. A mirror '
+              'reading one opens it read-only and never pulls, so there is '
+              'nothing here to start or to schedule.',
     _card([
       Wrap(
         spacing: Ar.space2,
@@ -398,7 +409,19 @@ class _ConsoleViewState extends State<ConsoleView> {
           ),
         ],
       ),
-      if (widget.onPoll != null)
+      if (widget.onSyncing != null)
+        _row(
+          'Sync automatically',
+          ArSwitch(
+            label: 'Sync automatically',
+            value: widget.state.syncing,
+            onChanged: widget.state.busy ? null : widget.onSyncing,
+          ),
+          hint:
+              'Off is a mirror that holds what it already has and asks for '
+              'nothing. Sync now still works, and so does the command line.',
+        ),
+      if (widget.onPoll != null && widget.state.syncing)
         _row(
           'Sync every',
           Row(

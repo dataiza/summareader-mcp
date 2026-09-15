@@ -109,6 +109,11 @@ class Config:
     #: choice made in a window has to outlive the window.
     host: str = "127.0.0.1"
     port: int = 8100
+    #: Whether to pull at all. Off means a mirror that holds what it already
+    #: has and asks for nothing — useful while a sync server is down, or on a
+    #: machine that should read the library and never add to it. `pull` on the
+    #: command line still works; this is the loop, not the verb.
+    sync: bool = True
     #: Seconds between pulls. A library nobody is watching can afford to ask
     #: less often, and a shared one may want to ask more.
     poll_seconds: int = 300
@@ -249,6 +254,8 @@ class Config:
             not in ("false", "0", "no"),
             host=pick("host", "SUMMAREADER_MCP_HOST", "127.0.0.1"),
             port=_number("port", pick("port", "SUMMAREADER_MCP_PORT", "8100")),
+            sync=(pick("sync", "SUMMAREADER_MCP_SYNC", "true") or "").lower()
+            not in ("false", "0", "no"),
             poll_seconds=_number(
                 "poll_seconds", pick("poll_seconds", "SUMMAREADER_MCP_POLL", "300")
             ),
