@@ -3,6 +3,11 @@ name = "summareader-mcp"
 version = "0.2.0"
 description = "A device that mirrors a SummaReader library and answers questions about it — over MCP, a terminal, or a command line."
 requires-python = ">=3.11"
+# The same licence the sync server carries. Declared here as well as shipped as
+# a file, so `pip show` and every index answer the question without anyone
+# having to open an archive.
+license = "AGPL-3.0-only"
+license-files = ["LICENSE"]
 dependencies = [
     # The protocol. `cryptography` for HKDF-SHA256, PyNaCl for
     # XChaCha20-Poly1305 — libsodium's, so the AEAD is not hand-rolled.

@@ -40,6 +40,11 @@ Treat the directory the way you would treat the library itself.
 
 ## Licence
 
-Copyright © 2026 Dataiza s. r. o., Slovakia. Downloading a build grants you the
-right to run it; it does not grant the right to redistribute it or to take it
-apart.
+GNU Affero General Public License, version 3. The full text is in `LICENSE`.
+
+Section 13 is the one that matters for a server: run a **modified** version
+where other people can reach it over a network, and those people are entitled
+to its source. Running an unmodified build from here puts no obligation on you.
+
+SummaReader itself is a separate, proprietary program. This speaks to your
+library over a network protocol and links none of the app's code.

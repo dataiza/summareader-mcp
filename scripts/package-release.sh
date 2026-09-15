@@ -59,7 +59,7 @@ mkdir "$dir"
 
 cp "dist/$name" "$dir/"
 cp "$wheels"/*.whl "$dir/"
-cp CHANGELOG.md "$name.example.json" "$dir/"
+cp LICENSE CHANGELOG.md "$name.example.json" "$dir/"
 cp scripts/release/Dockerfile scripts/release/docker-compose.yml "$dir/"
 
 cat scripts/release/README.head.md >"$dir/README.md"
@@ -98,7 +98,7 @@ linux)
   # after the environment. A window that cannot find a mirror has nothing to
   # show.
   cp "dist/$name" "$dir/"
-  cp CHANGELOG.md "$name.example.json" "$dir/"
+  cp LICENSE CHANGELOG.md "$name.example.json" "$dir/"
   tar -czf "$out/$name-console-linux-x64.tar.gz" "$dir"
   rm -rf "$dir"
   ;;

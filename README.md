@@ -730,3 +730,16 @@ day the secret rotates.
 Nothing in the output names an article. This is the one process that holds the
 library in plaintext, and a label carrying a title would put it somewhere
 nobody expects to find one — a test asserts it.
+
+## Licence
+
+GNU Affero General Public License, version 3 — the full text is in `LICENSE`,
+and it ships inside every download.
+
+Section 13 is the one that matters for a server: run a **modified** version
+where other people can reach it over a network, and those people are entitled
+to its source. Running an unmodified build puts no obligation on you.
+
+This is not the licence SummaReader itself carries. The app is a separate,
+proprietary program; it speaks to this over a network protocol and links none
+of its code.
