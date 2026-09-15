@@ -14,6 +14,7 @@ import 'package:summareader_ui/summareader_ui.dart';
 
 import 'addresses.dart';
 import 'library.dart';
+import 'version.dart';
 
 /// Everything drawn, at one moment.
 class ConsoleState {
@@ -231,7 +232,29 @@ class _ConsoleViewState extends State<ConsoleView> {
             children: [
               const Eyebrow('Model Context Protocol'),
               const SizedBox(height: Ar.space1),
-              Text(title, style: Ar.headingStyle(28, forText: title)),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Flexible(
+                    child: Text(
+                      title,
+                      overflow: TextOverflow.ellipsis,
+                      style: Ar.headingStyle(28, forText: title),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Small and quiet, but present, exactly as the app does it:
+                  // "which one am I running" should not need a menu, and this
+                  // window has no About to put it in.
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Text(
+                      consoleVersion,
+                      style: Ar.bodyStyle(12, color: Ar.dim(0.45)),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: Ar.space1),
               Text(
                 widget.state.status,
