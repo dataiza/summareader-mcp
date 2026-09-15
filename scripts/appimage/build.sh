@@ -75,9 +75,19 @@ for size in 16 32 64 128 256 512; do
   mkdir -p "$dir"
   install -m 644 "$icons/app_icon_$size.png" "$dir/$id.png"
 done
-mkdir -p "$app/usr/share/icons/hicolor/48x48/apps"
-magick "$icons/app_icon_512.png" -resize 48x48 \
-  "$app/usr/share/icons/hicolor/48x48/apps/$id.png"
+# 48 is the one size the ladder lacks and the one the freedesktop spec names,
+# so it is scaled here. Skipped rather than fatal when there is no ImageMagick:
+# hicolor lookup falls back to the nearest size, so the icon is a little softer
+# on a panel that wanted 48 and nothing else is wrong. CI installs the tool, so
+# a released image always has it; a contributor building locally without it
+# gets a working AppImage and a line saying what is missing.
+if command -v magick >/dev/null 2>&1; then
+  mkdir -p "$app/usr/share/icons/hicolor/48x48/apps"
+  magick "$icons/app_icon_512.png" -resize 48x48 \
+    "$app/usr/share/icons/hicolor/48x48/apps/$id.png"
+else
+  echo "  no ImageMagick, so no 48x48 icon — the desktop will scale one" >&2
+fi
 
 # appimagetool wants the icon at the root as well, named after the desktop
 # file, or it refuses the AppDir.

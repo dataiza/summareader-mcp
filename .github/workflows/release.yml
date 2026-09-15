@@ -133,7 +133,11 @@ jobs:
         if: matrix.os == 'linux' && runner.environment == 'github-hosted'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
+          # imagemagick for the one icon size the macOS ladder does not carry.
+          # The build skips it rather than failing when the tool is absent, so
+          # this is what keeps a *released* image from quietly losing its 48.
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev \
+            imagemagick
 
       - name: Build and package
         # The packaging is a script in the repository rather than steps here,
