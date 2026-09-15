@@ -23,6 +23,7 @@ class MirrorConfig {
     required this.file,
     required this.cacheDir,
     this.saidWhere = true,
+    this.inMenu,
     this.server,
     this.token,
     this.masterKey,
@@ -65,6 +66,15 @@ class MirrorConfig {
   String get database => library ?? '$cacheDir/library.sqlite';
 
   bool get readsALocalLibrary => library != null;
+
+  /// Whether somebody has answered the applications-menu question, and what
+  /// they said.
+  ///
+  /// **Null means never asked**, which is the only state that asks. A stored
+  /// `false` is somebody having said no, and treating that as "not yet" would
+  /// make a question asked once into one asked every launch until they give
+  /// in.
+  final bool? inMenu;
 
   /// False when nothing named a location — no `cache_dir`, no
   /// SUMMAREADER_MCP_CACHE, no library. The one condition the window asks its
@@ -135,10 +145,16 @@ class MirrorConfig {
       return value is String && value.isNotEmpty ? value : null;
     }
 
+    // Absent and present-but-false are different answers here, so this is read
+    // straight out of the file rather than through `pick`, which folds an
+    // empty value into a default.
+    final menu = stored['in_menu'];
+
     final said = pick('cache_dir', 'SUMMAREADER_MCP_CACHE');
     return MirrorConfig(
       file: path,
       cacheDir: said ?? defaultCacheDir(env),
+      inMenu: menu is bool ? menu : null,
       // Nothing said where, so nobody has been asked. Reading a `library` key
       // counts too — that is the other way to name a file, and somebody who
       // has named one has answered the question.

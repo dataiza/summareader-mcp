@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=SummaReader MCP
+GenericName=MCP server
+Comment=An MCP server over your SummaReader library
+Exec=summareader_mcp_console
+Icon=sk.dataiza.summareader_mcp_console
+Terminal=false
+Categories=Utility;Network;
+Keywords=summareader;mcp;reader;sync;
+# The GTK application id, which linux/CMakeLists.txt sets and
+# runner/my_application.cc hands to g_set_prgname. Without it a running window
+# is not matched to this entry, so the launcher shows the app twice — once as
+# the icon you clicked and once as an unnamed window.
+StartupWMClass=sk.dataiza.summareader_mcp_console

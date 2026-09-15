@@ -101,6 +101,21 @@ linux)
   cp LICENSE CHANGELOG.md "$name.example.json" "$dir/"
   tar -czf "$out/$name-console-linux-x64.tar.gz" "$dir"
   rm -rf "$dir"
+
+  # And the same thing as one file.
+  #
+  # The AppImage is what a person downloads: chmod +x, run, no repository and
+  # no package manager. The tarball stays for anyone packaging this themselves
+  # or unpacking it somewhere a fuse mount will not work.
+  #
+  # Only the AppImage can update itself — it is one file the console owns, so
+  # replacing it is a rename. Unpacked into a directory there is nothing to
+  # replace, and the console hides that control accordingly.
+  scripts/appimage/build.sh \
+    console/build/linux/x64/release/bundle \
+    "dist/$name" \
+    "$version" \
+    "$out/SummaReaderMCP-$version-x86_64.AppImage"
   ;;
 macos)
   app="$(find console/build/macos/Build/Products/Release -maxdepth 1 -name '*.app' | head -1)"

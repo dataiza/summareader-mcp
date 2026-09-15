@@ -7,7 +7,14 @@ project(runner LANGUAGES CXX)
 set(BINARY_NAME "summareader_mcp_console")
 # The unique GTK application identifier for this application. See:
 # https://wiki.gnome.org/HowDoI/ChooseApplicationID
-set(APPLICATION_ID "com.dataiza.summareader_mcp_console")
+#
+# `sk.`, not the `com.` this was generated with. The app and the sync server's
+# console both use sk.dataiza, and this is the identifier a .desktop file has
+# to be named after — runner/my_application.cc hands it to g_set_prgname and to
+# the application-id property so a running window can be matched to its
+# launcher entry. One of three products spelled differently would have been
+# permanent the moment a desktop file carried it.
+set(APPLICATION_ID "sk.dataiza.summareader_mcp_console")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.

@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:summareader_ui/summareader_ui.dart';
 import 'package:summareader_mcp_console/src/console.dart';
+import 'package:summareader_mcp_console/src/version.dart';
 import 'package:summareader_mcp_console/src/library.dart';
 import 'package:summareader_mcp_console/src/mirror.dart';
 
@@ -60,6 +61,7 @@ Future<void> openSettings(WidgetTester tester) async {
 }
 
 void main() {
+  _thisProgram();
   testWidgets('the window opens on the library and the search box', (
     tester,
   ) async {
@@ -241,5 +243,51 @@ void main() {
     // "Its own copy" is selected in this state, so the dialog is being opened
     // for a directory this mirror will fill.
     expect(asked, isFalse);
+  });
+}
+
+void _thisProgram() {
+  group('the program keeping itself current', () {
+    ConsoleState asAnImage({bool inMenu = false}) => ConsoleState(
+      status: 'Not running',
+      running: false,
+      local: true,
+      stats: formatStats(const {'items': 3}, '7'),
+      configRows: const [('File', '/home/you/config.json')],
+      updatable: true,
+      inMenu: inMenu,
+    );
+
+    testWidgets('an AppImage is offered both controls', (tester) async {
+      await draw(tester, asAnImage());
+      await openSettings(tester);
+
+      expect(find.text('This program'), findsOneWidget);
+      expect(find.text('Check for updates'), findsOneWidget);
+      expect(find.text('In the applications menu'), findsWidgets);
+      // Its own version, so "which one am I running" is answerable in the
+      // place where you would go to change it.
+      expect(find.text(consoleVersion), findsWidgets);
+    });
+
+    testWidgets('and anything else is offered neither', (tester) async {
+      // A tarball, or `flutter run`. There is no single file to replace and no
+      // path worth writing into a launcher entry, so a button for either would
+      // act on something nobody chose.
+      await draw(tester, reading(null, local: true));
+      await openSettings(tester);
+
+      expect(find.text('This program'), findsNothing);
+      expect(find.text('Check for updates'), findsNothing);
+      expect(find.text('In the applications menu'), findsNothing);
+    });
+
+    testWidgets('the switch says whether it is already there', (tester) async {
+      await draw(tester, asAnImage(inMenu: true));
+      await openSettings(tester);
+
+      final control = tester.widget<ArSwitch>(find.byType(ArSwitch).last);
+      expect(control.value, isTrue);
+    });
   });
 }

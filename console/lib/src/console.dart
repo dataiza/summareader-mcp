@@ -35,6 +35,8 @@ class ConsoleState {
     this.atLogin,
     this.message = '',
     this.busy = false,
+    this.updatable = false,
+    this.inMenu = false,
   });
 
   /// "Running on http://…" or "Not running — …", already worded.
@@ -52,6 +54,15 @@ class ConsoleState {
   final List<LanAddr> hosts;
   final List<(String, String)> stats;
   final List<(String, String)> configRows;
+
+  /// Whether this console can update and register itself — true only when it
+  /// is running as an AppImage, which is the one form that is a single file it
+  /// owns. A tarball or a `flutter run` shows neither control, because both
+  /// would act on something nobody chose.
+  final bool updatable;
+
+  /// Whether it is already in the applications menu.
+  final bool inMenu;
 
   /// The library on screen, and whether this mirror fills it or merely reads
   /// one somebody else fills.
@@ -87,6 +98,8 @@ class ConsoleView extends StatefulWidget {
     this.onPort,
     this.onLibrary,
     this.onPair,
+    this.onCheckUpdates,
+    this.onInMenu,
     this.onBrowse,
   });
 
@@ -115,6 +128,11 @@ class ConsoleView extends StatefulWidget {
   /// `--library` console is reading somebody else's arrangement.
   final ValueChanged<String>? onPair;
 
+  /// Asked for by a press. See [ConsoleState.updatable] for why both of these
+  /// are absent unless this is an AppImage.
+  final VoidCallback? onCheckUpdates;
+  final ValueChanged<bool>? onInMenu;
+
   @override
   State<ConsoleView> createState() => _ConsoleViewState();
 }
@@ -140,6 +158,7 @@ class _ConsoleViewState extends State<ConsoleView> {
             if (widget.state.local) _address(),
             _whereTheDataLives(),
             _fromTheConfigFile(),
+            if (widget.state.updatable) _thisProgram(),
           ]
         : [
             _header(),
@@ -550,6 +569,57 @@ class _ConsoleViewState extends State<ConsoleView> {
   /// message. Either way it is accepted or refused entire, which is what
   /// makes writing a master key from a window acceptable when a field holding
   /// one would not be.
+  /// The version, and the way to a newer one.
+  ///
+  /// Pressed, never automatic and never on launch: a window that asks the
+  /// network about itself before anybody said so is a window nobody chose.
+  /// The program itself, as opposed to the library it opens or the server it
+  /// supervises. Only drawn when this is an AppImage — see [ConsoleState.updatable].
+  Widget _thisProgram() => _section(
+    'This program',
+    'Where it came from and where it appears. An AppImage is one file you '
+        'downloaded, so keeping it current and putting it in the menu are '
+        'things it has to do for itself.',
+    _card([_updates(), _inMenu()]),
+  );
+
+  Widget _updates() => _row(
+    'This console',
+    Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(consoleVersion, style: Ar.bodyStyle(13, color: Ar.dim(0.75))),
+        const SizedBox(width: Ar.space3),
+        PillButton(
+          label: 'Check for updates',
+          icon: Icons.download_outlined,
+          onTap: widget.state.busy ? null : widget.onCheckUpdates,
+        ),
+      ],
+    ),
+    hint:
+        'Asks GitHub for the newest release and replaces this AppImage with '
+        'it. Nothing is checked until you press it.',
+  );
+
+  /// Whether the console is in the applications menu.
+  ///
+  /// A switch rather than a one-way button, because somebody who said no on the
+  /// first run should not have to find the file to change their mind, and
+  /// somebody who said yes should be able to take it back.
+  Widget _inMenu() => _row(
+    'In the applications menu',
+    ArSwitch(
+      label: 'In the applications menu',
+      value: widget.state.inMenu,
+      onChanged: widget.state.busy ? null : widget.onInMenu,
+    ),
+    hint:
+        'Writes a launcher entry and icons into ~/.local/share, so this '
+        'appears beside your other applications instead of only in the folder '
+        'you downloaded it to.',
+  );
+
   Widget _pair() => _row(
     'Pair',
     Column(

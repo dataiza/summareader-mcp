@@ -51,8 +51,10 @@ import 'package:summareader_ui/summareader_ui.dart';
 
 import 'src/addresses.dart';
 import 'src/config.dart';
+import 'src/desktop_entry.dart';
 import 'src/file_choice.dart';
 import 'src/first_run.dart';
+import 'src/updates.dart';
 import 'src/console.dart';
 import 'src/library.dart';
 import 'src/mirror.dart';
@@ -147,6 +149,11 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     // is already answered.
     if (!_config.saidWhere) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _askWhereToPutIt());
+    } else {
+      // The two first-run questions are asked one at a time, and where is the
+      // more important of them: somebody answering where the library goes
+      // should not be handed a second dialog on top of the first.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _offerTheMenu());
     }
     if (_local) {
       // Flag first, then whatever the config file and the environment say —
@@ -428,6 +435,11 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         atLogin: _local && Platform.isLinux ? _atLogin : null,
         message: _message,
         busy: _busy,
+        // Both controls exist only for an AppImage: it is the one form that is
+        // a single file this program owns, so replacing it and registering it
+        // are things it can honestly offer to do.
+        updatable: runningImage() != null,
+        inMenu: isInMenu(),
       ),
       query: _query,
       onToggle: _toggle,
@@ -442,6 +454,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       // name none, and a console reading somebody else's mirror has no
       // business being handed a master key.
       onPair: _config.fromAFile ? _pair : null,
+      onCheckUpdates: _checkUpdates,
+      onInMenu: _setInMenu,
     );
   }
 
@@ -465,6 +479,59 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   /// Writing the key is what makes it once — `saidWhere` is false only while
   /// nothing has. Dismissing without answering leaves the default and asks
   /// again, which is right: the question is "where", and no answer is not one.
+  /// Asks GitHub whether there is a newer release, and takes it.
+  ///
+  /// Both halves report through [_act], so the toast says what is happening
+  /// and what happened — a forty-megabyte download with no sign of life reads
+  /// as a window that has hung.
+  Future<void> _checkUpdates() => _act('checking', () async {
+    final found = await const GitHubUpdates().newer();
+    if (found == null) return 'This is the newest release.';
+
+    final refusal = await replaceRunningImage(found);
+    if (refusal != null) return refusal;
+    return 'Updated to ${found.version}. Restart to use it.';
+  });
+
+  /// Puts the console in the applications menu, or takes it out.
+  ///
+  /// The answer is remembered either way, which is what makes the question on
+  /// the first run a question asked once rather than every launch.
+  Future<void> _setInMenu(bool wanted) => _act(
+    wanted ? 'adding to the menu' : 'removing from the menu',
+    () async {
+      final image = runningImage();
+      if (image == null) return 'This is not running as an AppImage.';
+
+      final refusal = wanted ? await addToMenu(image) : await removeFromMenu();
+      if (refusal != null) return refusal;
+
+      _config.save({'in_menu': wanted});
+      _config = widget.options.configuration;
+      return wanted
+          ? 'Added. It should appear in your applications shortly.'
+          : 'Removed from the applications menu.';
+    },
+  );
+
+  /// Offers the menu once, on a first run that is an AppImage.
+  ///
+  /// Only when the key is absent: a `false` there is somebody having said no,
+  /// and asking again would make "once" mean "every launch until you give in".
+  Future<void> _offerTheMenu() async {
+    if (!mounted || runningImage() == null) return;
+    if (_config.inMenu != null || isInMenu()) return;
+
+    final wanted = await askAboutTheMenu(context);
+    if (!mounted) return;
+    if (wanted) {
+      await _setInMenu(true);
+    } else {
+      _config.save({'in_menu': false});
+      _config = widget.options.configuration;
+    }
+  }
+
   Future<void> _askWhereToPutIt() async {
     if (!mounted) return;
     final wanted = await askWhereTheLibraryGoes(context, _config.cacheDir);

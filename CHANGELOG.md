@@ -46,6 +46,39 @@ The typed field still works, and a picked path goes through exactly the same
 check as a typed one. macOS gained the user-selected-files entitlement, without
 which the picker returns nothing there and says nothing about why.
 
+### An AppImage for Linux, that updates itself
+
+One file: `chmod +x`, run. No repository, no package manager, no root — which
+is the whole reason for the format. The unpacked tarball stays for anyone
+packaging this themselves.
+
+**It updates itself.** Configuration → This program → *Check for updates* asks
+GitHub for the newest release and replaces the running image. Nothing is
+checked until it is pressed: a window that asks the network about itself before
+anybody said so is a window nobody chose. Replacing the file a running program
+started from is safe — the kernel holds the old inode until the process ends,
+and the rename is atomic — and the new version is what starts next time.
+
+**It offers, once, to join the applications menu**, writing a launcher entry
+and icons into `~/.local/share`. Asked rather than done: writing into somebody's
+home unbidden the first time a program runs is what makes people distrust this
+format. A no is remembered as firmly as a yes.
+
+Both controls are absent unless it *is* an AppImage. A tarball has no single
+file to replace and no path worth writing into a launcher entry, so offering
+either would act on something nobody chose.
+
+### Changed
+
+- The GTK application id is `sk.dataiza.summareader_mcp_console`; it was
+  `com.dataiza.…`, the only one of the three products spelled that way. A
+  `.desktop` file has to be named after it for a window to be matched to its
+  launcher entry, so this was the last moment to fix it without breaking
+  something.
+- The icon ladder gained the 48×48 the freedesktop spec asks for, scaled at
+  build time from the 512 rather than committed — a generated file in the tree
+  is one nobody can regenerate when the source changes.
+
 ## 0.3.0
 
 ### The library moved out of the cache directory

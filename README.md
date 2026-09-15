@@ -29,9 +29,25 @@ Built releases are on this repository's [Releases](../../releases/latest) page.
 
 | | For | File |
 |---|---|---|
-| **Headless** | a server an MCP client reaches over HTTP | `summareader-mcp-headless-<os>-<arch>.tar.gz` |
-| **Console, Linux** | a desktop, with a window | `summareader-mcp-console-linux-x64.tar.gz` |
+| **Console, Linux** | a desktop, with a window | `SummaReaderMCP-<version>-x86_64.AppImage` |
 | **Console, macOS** | a Mac, with a window | `summareader-mcp-console-macos.zip` |
+| **Headless** | a server an MCP client reaches over HTTP | `summareader-mcp-headless-<os>-<arch>.tar.gz` |
+| Console, Linux, unpacked | packaging it yourself | `summareader-mcp-console-linux-x64.tar.gz` |
+
+On Linux the AppImage is the one to take:
+
+```sh
+chmod +x SummaReaderMCP-*-x86_64.AppImage
+./SummaReaderMCP-*-x86_64.AppImage
+```
+
+No repository, no package manager, no root — one file. It offers once to add
+itself to your applications menu, and it updates itself: **Configuration → This
+program → Check for updates** asks GitHub for the newest release and replaces
+the file. Nothing is checked until you press it.
+
+It needs FUSE to mount itself, which every desktop has; if yours does not, run
+it with `--appimage-extract-and-run`, or take the tarball.
 
 ### Config first (every variant needs it)
 
