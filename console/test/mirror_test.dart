@@ -20,7 +20,7 @@ void main() {
   group('which library, and whose', () {
     test('an existing library has to exist', () {
       final missing = '${Directory.systemTemp.path}/nothing-here.sqlite';
-      expect(libraryRefusal(missing, existing: true), contains('No file at'));
+      expect(libraryRefusal(missing, existing: true), contains('Nothing at'));
     });
 
     test('and is accepted when it does', () {

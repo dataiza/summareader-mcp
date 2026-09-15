@@ -35,8 +35,8 @@ class ConsoleState {
     this.atLogin,
     this.message = '',
     this.busy = false,
+    this.pollSeconds = 300,
     this.updatable = false,
-    this.inMenu = false,
   });
 
   /// "Running on http://…" or "Not running — …", already worded.
@@ -55,14 +55,14 @@ class ConsoleState {
   final List<(String, String)> stats;
   final List<(String, String)> configRows;
 
+  /// How often the mirror pulls, in seconds.
+  final int pollSeconds;
+
   /// Whether this console can update and register itself — true only when it
   /// is running as an AppImage, which is the one form that is a single file it
   /// owns. A tarball or a `flutter run` shows neither control, because both
   /// would act on something nobody chose.
   final bool updatable;
-
-  /// Whether it is already in the applications menu.
-  final bool inMenu;
 
   /// The library on screen, and whether this mirror fills it or merely reads
   /// one somebody else fills.
@@ -98,8 +98,9 @@ class ConsoleView extends StatefulWidget {
     this.onPort,
     this.onLibrary,
     this.onPair,
+    this.onPoll,
+    this.onGenerateToken,
     this.onCheckUpdates,
-    this.onInMenu,
     this.onBrowse,
   });
 
@@ -128,10 +129,16 @@ class ConsoleView extends StatefulWidget {
   /// `--library` console is reading somebody else's arrangement.
   final ValueChanged<String>? onPair;
 
-  /// Asked for by a press. See [ConsoleState.updatable] for why both of these
-  /// are absent unless this is an AppImage.
+  /// Seconds between pulls, typed. Null for the same reason [onPair] is —
+  /// there is no file to write it into.
+  final ValueChanged<String>? onPoll;
+
+  /// Mint a bearer token and write it. Null where there is no config file.
+  final VoidCallback? onGenerateToken;
+
+  /// Asked for by a press. Absent unless this is an AppImage — see
+  /// [ConsoleState.updatable].
   final VoidCallback? onCheckUpdates;
-  final ValueChanged<bool>? onInMenu;
 
   @override
   State<ConsoleView> createState() => _ConsoleViewState();
@@ -391,6 +398,27 @@ class _ConsoleViewState extends State<ConsoleView> {
           ),
         ],
       ),
+      if (widget.onPoll != null)
+        _row(
+          'Sync every',
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 110,
+                child: _NumberField(
+                  value: '${widget.state.pollSeconds}',
+                  onSubmitted: widget.onPoll,
+                ),
+              ),
+              const SizedBox(width: Ar.space2),
+              Text('seconds', style: Ar.bodyStyle(13, color: Ar.dim(0.75))),
+            ],
+          ),
+          hint:
+              'What the mirror does on its own between presses of Sync now. '
+              'Takes effect the next time it starts.',
+        ),
       if (widget.state.atLogin case final at?)
         _row(
           'Start at login',
@@ -434,12 +462,27 @@ class _ConsoleViewState extends State<ConsoleView> {
             'needs a bearer token — this port serves the whole library in '
             'plaintext.',
       ),
+      if (widget.onGenerateToken != null)
+        _row(
+          'Bearer token',
+          PillButton(
+            label: 'Generate',
+            icon: Icons.key_outlined,
+            height: 38,
+            onTap: widget.state.busy ? null : widget.onGenerateToken,
+          ),
+          hint:
+              'Makes a new one, writes it to the config file and puts it on '
+              'the clipboard — the one moment it is readable, because a '
+              'client has to be given it. Paste it somewhere before you copy '
+              'anything else. Any client holding the old one stops working.',
+        ),
       _row(
         'Port',
         SizedBox(
           width: 110,
-          child: _PortField(
-            port: '${widget.state.port}',
+          child: _NumberField(
+            value: '${widget.state.port}',
             onSubmitted: widget.onPort,
           ),
         ),
@@ -524,13 +567,21 @@ class _ConsoleViewState extends State<ConsoleView> {
             ),
           ],
         ),
+        // The second half of this used to say only what the mode means, and
+        // left somebody in a file dialog with no idea what they were looking
+        // for. The app keeps its library in an application support directory
+        // nobody visits on purpose, so the answer is worth spelling out.
         hint: widget.state.ownsLibrary
             ? 'This mirror fills it, by pulling and decrypting. The path is '
                   'the directory it lives in; the library itself is made on '
                   'the first pull.'
             : 'Somebody else fills it — the app, on this machine — and it is '
                   'opened read-only. Needs no server, token or master key, '
-                  'and nothing here will pull into it.',
+                  'and nothing here will pull into it.\n\n'
+                  'Browse to the app\'s data directory — on Linux that is '
+                  '~/.local/share/sk.dataiza.summareader, or '
+                  '…summareader.premium for Premium — and the summareader.sqlite '
+                  'inside it is found for you. Typing that directory works too.',
       ),
     ]),
   );
@@ -577,10 +628,9 @@ class _ConsoleViewState extends State<ConsoleView> {
   /// supervises. Only drawn when this is an AppImage — see [ConsoleState.updatable].
   Widget _thisProgram() => _section(
     'This program',
-    'Where it came from and where it appears. An AppImage is one file you '
-        'downloaded, so keeping it current and putting it in the menu are '
-        'things it has to do for itself.',
-    _card([_updates(), _inMenu()]),
+    'An AppImage is one file you downloaded, with no package manager behind '
+        'it, so keeping itself current is something it has to do for itself.',
+    _card([_updates()]),
   );
 
   Widget _updates() => _row(
@@ -600,24 +650,6 @@ class _ConsoleViewState extends State<ConsoleView> {
     hint:
         'Asks GitHub for the newest release and replaces this AppImage with '
         'it. Nothing is checked until you press it.',
-  );
-
-  /// Whether the console is in the applications menu.
-  ///
-  /// A switch rather than a one-way button, because somebody who said no on the
-  /// first run should not have to find the file to change their mind, and
-  /// somebody who said yes should be able to take it back.
-  Widget _inMenu() => _row(
-    'In the applications menu',
-    ArSwitch(
-      label: 'In the applications menu',
-      value: widget.state.inMenu,
-      onChanged: widget.state.busy ? null : widget.onInMenu,
-    ),
-    hint:
-        'Writes a launcher entry and icons into ~/.local/share, so this '
-        'appears beside your other applications instead of only in the folder '
-        'you downloaded it to.',
   );
 
   Widget _pair() => _row(
@@ -864,22 +896,22 @@ class _PathFieldState extends State<_PathField> {
   );
 }
 
-/// The port, in a field that keeps its own text.
+/// A number — a port, an interval — in a field that keeps its own text.
 ///
 /// Its own widget because a controller rebuilt on every poll loses the caret
 /// twice a second, which is a field nobody can type four digits into.
-class _PortField extends StatefulWidget {
-  const _PortField({required this.port, this.onSubmitted});
+class _NumberField extends StatefulWidget {
+  const _NumberField({required this.value, this.onSubmitted});
 
-  final String port;
+  final String value;
   final ValueChanged<String>? onSubmitted;
 
   @override
-  State<_PortField> createState() => _PortFieldState();
+  State<_NumberField> createState() => _NumberFieldState();
 }
 
-class _PortFieldState extends State<_PortField> {
-  late final _controller = TextEditingController(text: widget.port);
+class _NumberFieldState extends State<_NumberField> {
+  late final _controller = TextEditingController(text: widget.value);
 
   @override
   void dispose() {

@@ -24,6 +24,8 @@ Future<void> draw(
   VoidCallback? onToggle,
   ValueChanged<String>? onPair,
   void Function({required bool existing})? onBrowse,
+  ValueChanged<String>? onPoll,
+  VoidCallback? onGenerateToken,
 }) async {
   tester.view.physicalSize = const Size(1100, 1200);
   tester.view.devicePixelRatio = 1;
@@ -37,6 +39,8 @@ Future<void> draw(
         onToggle: onToggle,
         onPair: onPair,
         onBrowse: onBrowse,
+        onPoll: onPoll,
+        onGenerateToken: onGenerateToken,
       ),
     ),
   );
@@ -62,6 +66,40 @@ Future<void> openSettings(WidgetTester tester) async {
 
 void main() {
   _thisProgram();
+
+  testWidgets('the interval and the token are there when a file is', (
+    tester,
+  ) async {
+    await draw(
+      tester,
+      ConsoleState(
+        status: 'Not running',
+        running: false,
+        local: true,
+        stats: formatStats(const {'items': 3}, '7'),
+        configRows: const [('File', '/home/you/config.json')],
+        pollSeconds: 900,
+      ),
+      onPoll: (_) {},
+      onGenerateToken: () {},
+    );
+    await openSettings(tester);
+
+    expect(find.text('Sync every'), findsOneWidget);
+    expect(find.text('900'), findsOneWidget);
+    expect(find.text('Generate'), findsOneWidget);
+  });
+
+  testWidgets('and absent when there is no file to write into', (tester) async {
+    // `--remote` and `--library`: this console is reading somebody else's
+    // arrangement, and a control that writes into a file nobody named would
+    // act on something nobody chose.
+    await draw(tester, reading(null, local: true));
+    await openSettings(tester);
+
+    expect(find.text('Sync every'), findsNothing);
+    expect(find.text('Generate'), findsNothing);
+  });
   testWidgets('the window opens on the library and the search box', (
     tester,
   ) async {
@@ -248,46 +286,34 @@ void main() {
 
 void _thisProgram() {
   group('the program keeping itself current', () {
-    ConsoleState asAnImage({bool inMenu = false}) => ConsoleState(
+    ConsoleState asAnImage() => ConsoleState(
       status: 'Not running',
       running: false,
       local: true,
       stats: formatStats(const {'items': 3}, '7'),
       configRows: const [('File', '/home/you/config.json')],
       updatable: true,
-      inMenu: inMenu,
     );
 
-    testWidgets('an AppImage is offered both controls', (tester) async {
+    testWidgets('an AppImage is offered the update control', (tester) async {
       await draw(tester, asAnImage());
       await openSettings(tester);
 
       expect(find.text('This program'), findsOneWidget);
       expect(find.text('Check for updates'), findsOneWidget);
-      expect(find.text('In the applications menu'), findsWidgets);
       // Its own version, so "which one am I running" is answerable in the
       // place where you would go to change it.
       expect(find.text(consoleVersion), findsWidgets);
     });
 
-    testWidgets('and anything else is offered neither', (tester) async {
-      // A tarball, or `flutter run`. There is no single file to replace and no
-      // path worth writing into a launcher entry, so a button for either would
-      // act on something nobody chose.
+    testWidgets('and anything else is offered none', (tester) async {
+      // A tarball, or `flutter run`. There is no single file to replace, so a
+      // button offering to replace one would act on something nobody chose.
       await draw(tester, reading(null, local: true));
       await openSettings(tester);
 
       expect(find.text('This program'), findsNothing);
       expect(find.text('Check for updates'), findsNothing);
-      expect(find.text('In the applications menu'), findsNothing);
-    });
-
-    testWidgets('the switch says whether it is already there', (tester) async {
-      await draw(tester, asAnImage(inMenu: true));
-      await openSettings(tester);
-
-      final control = tester.widget<ArSwitch>(find.byType(ArSwitch).last);
-      expect(control.value, isTrue);
     });
   });
 }

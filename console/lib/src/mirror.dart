@@ -387,9 +387,19 @@ String? libraryRefusal(String path, {required bool existing}) {
   if (trimmed.isEmpty) return 'A path is needed. Nothing has been changed.';
 
   if (existing) {
+    // A directory is as good an answer as the file, and is the one people
+    // give: the library sits in an application support directory nobody
+    // navigates to for fun, so both the picker and anyone typing reach for
+    // the folder. Browsing resolved it and typing did not, which made the
+    // same answer right in one place and refused in the other — with an error
+    // naming a path that plainly exists.
+    if (Directory(trimmed).existsSync()) {
+      return appLibraryIn(trimmed) == null ? noLibraryIn(trimmed) : null;
+    }
     if (!File(trimmed).existsSync()) {
-      return 'No file at $trimmed. An existing library is opened, never '
-          'created — check the path, or choose to keep its own copy.';
+      return 'Nothing at $trimmed. An existing library is opened, never '
+          'created — give the app\'s data directory, or the path to its '
+          '.sqlite file. Nothing has been changed.';
     }
     return null;
   }

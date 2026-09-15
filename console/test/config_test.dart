@@ -154,6 +154,49 @@ void main() {
   /// refusal, because a payload that will not do has to leave the file exactly
   /// as it was — half a configuration is a mirror that does not start and says
   /// nothing about which half is missing.
+  group('how often it pulls, and what guards the port', () {
+    test('the interval is read like the mirror reads it', () {
+      final file = write(dir, '{"poll_seconds": 900}');
+      expect(
+        MirrorConfig.load(file: file.path, environment: const {}).pollSeconds,
+        900,
+      );
+      // The environment wins, the way every other key here does.
+      expect(
+        MirrorConfig.load(
+          file: file.path,
+          environment: const {'SUMMAREADER_MCP_POLL': '60'},
+        ).pollSeconds,
+        60,
+      );
+      // And nothing said is the default `config.py` holds, not zero.
+      expect(
+        MirrorConfig.load(
+          file: '${dir.path}/absent.json',
+          environment: const {},
+        ).pollSeconds,
+        300,
+      );
+    });
+
+    test('writing either leaves the rest of the file alone', () {
+      final file = write(dir, _full);
+      MirrorConfig.load(file: file.path, environment: const {}).savePoll(120);
+      MirrorConfig.load(
+        file: file.path,
+        environment: const {},
+      ).saveBearerToken('generated');
+
+      final after = MirrorConfig.load(file: file.path, environment: const {});
+      expect(after.pollSeconds, 120);
+      expect(after.bearerToken, 'generated');
+      // Including the master key, which is the one this must never touch.
+      expect(after.masterKey, 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=');
+      final raw = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+      expect(raw['_master_key'], 'NOT revocable.');
+    });
+  });
+
   group('pairing', () {
     // What Settings → Sync → Add another device → Copy MCP config puts on the
     // clipboard.
@@ -189,9 +232,10 @@ void main() {
       expect(read.keys!['server'], 'https://sync.example');
       expect(read.keys!['token'], 'device-token');
       expect(read.keys!['master_key'], key);
-      // The device that showed the code names the mirror, so the app's
-      // paired-devices list has something to show rather than a blank row.
-      expect(read.keys!['name'], 'a laptop');
+      // *Not* the device that showed the code. `from_device` is the name of
+      // the machine on the other end of the pairing, and taking it named this
+      // mirror after somebody's laptop in the app's device list.
+      expect(read.keys!['name'], 'MCP mirror');
     });
 
     test('a version 1 code, in the letters that release wrote', () {
@@ -205,7 +249,8 @@ void main() {
       expect(read.refusal, isNull);
       expect(read.keys!['server'], 'https://sync.example');
       expect(read.keys!['token'], 'device-token');
-      expect(read.keys!['name'], 'Phone');
+      // `d` is the other device, like `from_device` — see above.
+      expect(read.keys!['name'], 'MCP mirror');
     });
 
     test('an unnamed payload is still named in the file', () {
@@ -299,7 +344,7 @@ void main() {
       expect(after['server'], 'https://sync.example');
       expect(after['token'], 'device-token');
       expect(after['master_key'], key);
-      expect(after['name'], 'a laptop');
+      expect(after['name'], 'MCP mirror');
       // The comment keys, the unknown key and the old bearer-token spelling
       // belong to the person, not to this window.
       expect(after['_master_key'], 'NOT revocable.');

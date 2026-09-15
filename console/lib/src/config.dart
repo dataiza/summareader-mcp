@@ -29,6 +29,7 @@ class MirrorConfig {
     this.masterKey,
     this.instanceName,
     this.bearerToken,
+    this.pollSeconds = 300,
     this.library,
     this.remote,
     this.host = '127.0.0.1',
@@ -48,6 +49,11 @@ class MirrorConfig {
   final String? masterKey;
   final String? instanceName;
   final String? bearerToken;
+
+  /// How often the mirror pulls, in seconds. The Python side's default is 300
+  /// and this matches it — a window that showed a different number from the
+  /// one the server uses would be worse than showing none.
+  final int pollSeconds;
   final String? library;
   final String? remote;
 
@@ -173,6 +179,11 @@ class MirrorConfig {
       bearerToken:
           pick('bearer_token', 'SUMMAREADER_MCP_TOKEN') ??
           pick('http_token', 'SUMMAREADER_MCP_TOKEN'),
+      // The same default `config.py` holds. A window showing a different
+      // number from the one the mirror uses would be worse than showing none.
+      pollSeconds:
+          int.tryParse(pick('poll_seconds', 'SUMMAREADER_MCP_POLL') ?? '') ??
+          300,
       host: pick('host', 'SUMMAREADER_MCP_HOST') ?? '127.0.0.1',
       port: int.tryParse(pick('port', 'SUMMAREADER_MCP_PORT') ?? '') ?? 8100,
     );
@@ -210,6 +221,17 @@ class MirrorConfig {
         ? {'library': library, 'cache_dir': null}
         : {'cache_dir': cacheDir, 'library': null},
   );
+
+  /// How often the mirror pulls, in seconds.
+  void savePoll(int seconds) => save({'poll_seconds': seconds});
+
+  /// The credential the HTTP port demands.
+  ///
+  /// The one secret this window writes that it also shows, once, at the
+  /// moment it is made — unlike the master key, which nothing could do
+  /// anything with. A bearer token is useless until it has been given to a
+  /// client, so a token nobody can read is a token nobody can use.
+  void saveBearerToken(String token) => save({'bearer_token': token});
 
   /// Writes these keys and leaves the rest of the file exactly as it was.
   ///
@@ -379,7 +401,16 @@ class Pairing {
         'master_key': key,
         // What the app calls it when nobody named it, so the paired-devices
         // list has something to show rather than a blank row.
-        'name': _pasted(field(['name', 'from_device', 'd'])) ?? 'MCP mirror',
+        // Only `name`, and deliberately not `from_device`. That field is
+        // the name of the device that *showed* the code — a desktop called
+        // "Mainframe" — and this key is what the mirror calls *itself* in the
+        // app's paired-devices list. Taking one for the other paired a mirror
+        // that then reported itself as the machine that had paired it.
+        //
+        // The MCP config the app copies carries `name` already, set to the
+        // label typed when the code was made. A raw pairing payload carries
+        // no such thing, so it falls back.
+        'name': _pasted(field(['name'])) ?? 'MCP mirror',
       },
     );
   }

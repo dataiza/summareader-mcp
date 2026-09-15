@@ -42,11 +42,14 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 // AppExitResponse lives here rather than in the widgets layer.
 import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:summareader_ui/summareader_ui.dart';
 
 import 'src/addresses.dart';
@@ -441,8 +444,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         // Both controls exist only for an AppImage: it is the one form that is
         // a single file this program owns, so replacing it and registering it
         // are things it can honestly offer to do.
+        pollSeconds: _config.pollSeconds,
         updatable: runningImage() != null,
-        inMenu: isInMenu(),
       ),
       query: _query,
       onToggle: _toggle,
@@ -457,8 +460,10 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       // name none, and a console reading somebody else's mirror has no
       // business being handed a master key.
       onPair: _config.fromAFile ? _pair : null,
+      // Both write the config file, so both are absent when there is none.
+      onPoll: _config.fromAFile ? _setPoll : null,
+      onGenerateToken: _config.fromAFile ? _generateToken : null,
       onCheckUpdates: _checkUpdates,
-      onInMenu: _setInMenu,
     );
   }
 
@@ -600,24 +605,33 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     }
   }
 
-  Future<void> _setLibrary(String path, {required bool existing}) =>
-      _act('moving', () async {
-        final trimmed = path.trim();
-        if (trimmed == _libraryPath && existing == _config.readsALocalLibrary) {
-          return '';
-        }
-        final refused = libraryRefusal(trimmed, existing: existing);
-        if (refused != null) return refused;
+  Future<void> _setLibrary(String path, {required bool existing}) => _act(
+    'moving',
+    () async {
+      final trimmed = path.trim();
+      if (trimmed == _libraryPath && existing == _config.readsALocalLibrary) {
+        return '';
+      }
+      final refused = libraryRefusal(trimmed, existing: existing);
+      if (refused != null) return refused;
 
-        _config.saveLibrary(
-          library: existing ? trimmed : null,
-          cacheDir: existing ? null : trimmed,
-        );
-        await _reopen();
-        return existing
-            ? 'reading $trimmed, read-only'
-            : 'its own library, in $trimmed';
-      });
+      // What is stored is the file, even when a directory was given. The
+      // refusal above accepts either, because the directory is what people
+      // have to hand — but `library` names a file to open, and a directory
+      // in there is a config that passes every check here and fails at the
+      // moment somebody presses Start.
+      final resolved = existing ? (appLibraryIn(trimmed) ?? trimmed) : trimmed;
+
+      _config.saveLibrary(
+        library: existing ? resolved : null,
+        cacheDir: existing ? null : trimmed,
+      );
+      await _reopen();
+      return existing
+          ? 'reading $trimmed, read-only'
+          : 'its own library, in $trimmed';
+    },
+  );
 
   /// Everything the config file decides, opened again after it changed.
   ///
@@ -677,6 +691,42 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     _config.save(pairing.keys!);
     await _reopen();
     return 'paired with ${_config.server}';
+  });
+
+  /// How often the mirror pulls on its own.
+  ///
+  /// A floor of 30 seconds, which is not `config.py`'s business — the mirror
+  /// takes whatever number it is given, and a five is a mirror asking a sync
+  /// server twelve times a minute for ever. Typed here, so refused here.
+  void _setPoll(String typed) {
+    final seconds = int.tryParse(typed.trim());
+    if (seconds == null || seconds < 30) {
+      _fading.say('$typed is not a number of seconds, or is under 30.');
+      return;
+    }
+    if (seconds == _config.pollSeconds) return;
+    _config.savePoll(seconds);
+    setState(() => _config = widget.options.configuration);
+    _fading.say('pulling every $seconds seconds from the next start');
+  }
+
+  /// Mint the credential the HTTP port demands.
+  ///
+  /// 32 bytes of `Random.secure`, base64url so it survives a header and a
+  /// shell. Shown once by way of the clipboard rather than drawn in the
+  /// window: a client has to be given it — a token nobody can read is a token
+  /// nobody can use — but a credential on screen is a credential in the next
+  /// screenshot.
+  Future<void> _generateToken() => _act('generating', () async {
+    final bytes = List<int>.generate(32, (_) => Random.secure().nextInt(256));
+    final token = base64Url.encode(bytes).replaceAll('=', '');
+    _config.saveBearerToken(token);
+    await Clipboard.setData(ClipboardData(text: token));
+    // A running server was handed the old token when it started, so it is
+    // rebuilt around the new one here — the same path the library row and
+    // pairing take, and for the same reason.
+    await _reopen();
+    return 'token written, and on the clipboard — paste it into the client';
   });
 
   List<(String, String)> _configRows() => [

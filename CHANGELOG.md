@@ -4,6 +4,49 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
+## 0.4.4
+
+### How often it pulls, and a token it can make for you
+
+Two things the config file has always held and no window could touch.
+
+**Sync every _n_ seconds** is a field in The server, beside the Sync now it
+automates. It writes `poll_seconds`, which is what the mirror has read since it
+existed and what the environment's `SUMMAREADER_MCP_POLL` sets. Anything under
+30 is refused where it is typed: the mirror takes whatever number it is given,
+and a five is a mirror asking a sync server twelve times a minute for ever.
+
+**Generate**, beside the bind address, mints the bearer token that address
+needs — 32 random bytes — writes it, and puts it on the clipboard. That is the
+one moment it is readable, because a client has to be given it; a token nobody
+can read is a token nobody can use. It is not drawn in the window, which is
+still the rule the master key follows for a stronger reason.
+
+Both are absent when there is no config file to write into: a `--remote` or
+`--library` console is reading somebody else's arrangement.
+
+### Fixed
+
+- **Pairing named the mirror after the other device.** The payload's
+  `from_device` is the name of the machine that *showed* the code, and it was
+  being written as this mirror's own `name` — so a console paired from a laptop
+  called Mainframe appeared in the app's device list as Mainframe. It is "MCP
+  mirror" now unless the payload names this one.
+- **An existing library can be chosen by its directory.** "An existing library"
+  refused everything but a path ending in the `.sqlite` file itself, while the
+  Browse… dialog beside it picks directories — so the button and the field
+  disagreed about what an answer looked like. A directory is accepted and the
+  database inside it found, as the mode's own description always said. The hint
+  now names where the app keeps it: `~/.local/share/sk.dataiza.summareader`, or
+  `…summareader.premium` for Premium.
+
+### Changed
+
+- **In the applications menu** is gone from Configuration. The offer on first
+  run, and the question asked when the entry points somewhere stale, already
+  cover it; a switch that duplicates them is a third place for the same answer
+  to live.
+
 ## 0.4.3
 
 ### The launcher entry said "SummaReader Sync Server"
