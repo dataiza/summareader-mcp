@@ -81,9 +81,24 @@ done
 # on a panel that wanted 48 and nothing else is wrong. CI installs the tool, so
 # a released image always has it; a contributor building locally without it
 # gets a working AppImage and a line saying what is missing.
-if command -v magick >/dev/null 2>&1; then
+# `magick` or `convert`, and the difference is not cosmetic: ImageMagick 7
+# renamed the tool, and Debian and Ubuntu still ship version 6, whose package
+# provides `convert` and no `magick` at all. Looking only for `magick` is how
+# the first release came out with no 48 — the build did not fail, it took the
+# branch below and said so in a log nobody was reading.
+#
+# `candidate` and not `tool`: that name already holds the path to
+# appimagetool, and reusing it here silently turned the packaging step into
+# `convert --no-appstream AppDir`, which fails complaining about a decode
+# delegate for a command-line flag.
+resize=""
+for candidate in magick convert; do
+  if command -v "$candidate" >/dev/null 2>&1; then resize="$candidate"; break; fi
+done
+
+if [ -n "$resize" ]; then
   mkdir -p "$app/usr/share/icons/hicolor/48x48/apps"
-  magick "$icons/app_icon_512.png" -resize 48x48 \
+  "$resize" "$icons/app_icon_512.png" -resize 48x48 \
     "$app/usr/share/icons/hicolor/48x48/apps/$id.png"
 else
   echo "  no ImageMagick, so no 48x48 icon — the desktop will scale one" >&2
