@@ -20,6 +20,7 @@ jobs:
       # when it is not there, rather than leaving a silent skip in a green run.
       - name: The app, for the protocol vectors
         id: app
+        if: ${{ secrets.APP_REPO_TOKEN != '' }}
         continue-on-error: true
         uses: actions/checkout@v4
         with:
@@ -45,7 +46,7 @@ jobs:
       - name: Test
         env:
           SUMMAREADER_VECTORS: .sibling/summareader/docs/protocol-vectors.json
-        run: uv run --quiet pytest -q
+        run: uv run --extra dev --quiet pytest -q
 
   console:
     name: Console
@@ -59,6 +60,7 @@ jobs:
       # until somebody looked by hand.
       - name: The app, for the vendored-look check
         id: app
+        if: ${{ secrets.APP_REPO_TOKEN != '' }}
         continue-on-error: true
         uses: actions/checkout@v4
         with:
