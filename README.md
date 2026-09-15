@@ -12,6 +12,22 @@ console ([§7](#7-the-desktop-console)) starts and watches it from a window; it
 is a separate application, and it reads the same library through the same
 match.
 
+
+## Downloads
+
+Built releases are on this repository's [Releases](../../releases/latest) page.
+
+| | For | File |
+|---|---|---|
+| **Headless** | a server an MCP client reaches over HTTP | `summareader-mcp-headless-<os>-<arch>.tar.gz` |
+| **Console, Linux** | a desktop, with a window | `summareader-mcp-console-linux-x64.tar.gz` |
+| **Console, macOS** | a Mac, with a window | `summareader-mcp-console-macos.zip` |
+
+A headless bundle carries the frozen mirror — one file, no Python on the machine
+it runs on — plus an installer, the unit, a wheel and a compose file. It serves
+the terminal interface too, so it is usable on its own over ssh. A console
+bundle is the window, carrying its own copy of the mirror.
+
 ## Why it is a device and not part of the server
 
 The sync server holds opaque ciphertext and no keys — that is the whole design,
