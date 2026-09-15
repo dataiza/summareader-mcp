@@ -54,6 +54,21 @@ class _HoverableState extends State<Hoverable> {
     );
   }
 
+  /// A control's own words, taken out of the page's selection.
+  ///
+  /// The whole app body is wrapped in one `SelectionArea` so the article, the
+  /// summary and the transcript can be copied. That makes every `Text` inside
+  /// it selectable — including the label on a button, which puts a text cursor
+  /// at the leaf, *under* the pointer this widget sets a few nodes up. So a
+  /// button read as a piece of prose: an I-beam over the word, a hand over the
+  /// padding beside it.
+  ///
+  /// Only where there is something to press. A [Hoverable] with no `onTap` is
+  /// wrapping content rather than a control, and that content should stay
+  /// selectable.
+  Widget _unselectable(Widget child) =>
+      widget.onTap == null ? child : SelectionContainer.disabled(child: child);
+
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
@@ -73,13 +88,17 @@ class _HoverableState extends State<Hoverable> {
           child: GestureDetector(
             onTap: widget.onTap,
             behavior: HitTestBehavior.opaque,
-            child: _sized(context, widget.builder(context, _hovered)),
+            child: _unselectable(
+              _sized(context, widget.builder(context, _hovered)),
+            ),
           ),
         ),
         null => GestureDetector(
           onTap: widget.onTap,
           behavior: HitTestBehavior.opaque,
-          child: _sized(context, widget.builder(context, _hovered)),
+          child: _unselectable(
+            _sized(context, widget.builder(context, _hovered)),
+          ),
         ),
       },
     );
@@ -600,24 +619,73 @@ class ArField extends StatelessWidget {
 
 /// The dark pill that slides up from the bottom to confirm an action.
 class ArToast extends StatelessWidget {
-  const ArToast(this.message, {super.key});
+  const ArToast(this.message, {super.key, this.actionLabel, this.onAction});
 
   final String message;
 
+  /// A second reading of what just happened, offered rather than asked.
+  ///
+  /// A pasted address is classified without a dialog, so this is where the
+  /// other answer lives: "Added as a source · Save as link instead". Null on
+  /// every toast that is only telling you something.
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
   @override
   Widget build(BuildContext context) {
+    final action = actionLabel;
     return Align(
       alignment: Alignment.bottomCenter,
       child: Padding(
         padding: const EdgeInsets.only(bottom: 26),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          padding: EdgeInsets.only(
+            left: 20,
+            // Less on the right when a button follows: the label carries its
+            // own padding, and 20 after it reads as a gap rather than an edge.
+            right: action == null ? 20 : 8,
+            top: 12,
+            bottom: 12,
+          ),
           decoration: BoxDecoration(
             color: Ar.neutral900,
             borderRadius: BorderRadius.circular(Ar.pill),
             boxShadow: Ar.shadowLg,
           ),
-          child: Text(message, style: Ar.bodyStyle(13.5, color: Ar.neutral100)),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  message,
+                  style: Ar.bodyStyle(13.5, color: Ar.neutral100),
+                ),
+              ),
+              if (action != null) ...[
+                const SizedBox(width: 14),
+                Hoverable(
+                  onTap: onAction,
+                  label: action,
+                  builder: (context, hovered) => Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: hovered
+                          ? Ar.neutral100.withValues(alpha: 0.18)
+                          : Ar.neutral100.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(Ar.pill),
+                    ),
+                    child: Text(
+                      action,
+                      style: Ar.bodyStyle(13, color: Ar.neutral100),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
