@@ -49,9 +49,9 @@ ConsoleState reading(String? note, {bool local = false}) => ConsoleState(
 /// Walks the top menu to the settings, which is where everything but the
 /// library and the search box now lives.
 Future<void> openSettings(WidgetTester tester) async {
-  await tester.tap(find.text('Console'));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('Settings'));
+  // One press. It was two — a menu bar holding one submenu called "Console",
+  // with everything but the library behind that word.
+  await tester.tap(find.text('Configuration'));
   await tester.pumpAndSettle();
 }
 
@@ -68,16 +68,24 @@ void main() {
     // results started below the fold.
     expect(find.text('The server'), findsNothing);
     expect(find.text('Address'), findsNothing);
-    expect(find.text('Configuration'), findsNothing);
+    expect(find.text('Where the data lives'), findsNothing);
+    expect(find.text('From the config file'), findsNothing);
+    // The way to them, though, is on this page and says what it is — it was a
+    // grey strip reading "Console" that had to be clicked to find out.
+    expect(find.text('Configuration'), findsOneWidget);
   });
 
-  testWidgets('the menu reaches everything that moved', (tester) async {
+  testWidgets('one press reaches everything that moved', (tester) async {
     await draw(tester, reading(null, local: true));
     await openSettings(tester);
 
     expect(find.text('The server'), findsOneWidget);
     expect(find.text('Address'), findsOneWidget);
-    expect(find.text('Configuration'), findsOneWidget);
+    // Two sections where there was one called "Configuration" — which is the
+    // name of the page now, and a section inside a page of the same name
+    // reads as a mistake.
+    expect(find.text('Where the data lives'), findsOneWidget);
+    expect(find.text('From the config file'), findsOneWidget);
     expect(find.text('Start'), findsOneWidget);
     expect(find.text('Sync now'), findsOneWidget);
     // The library path is edited here, not read: it is the one line of the
@@ -86,9 +94,7 @@ void main() {
     expect(find.text('/home/you/config.json'), findsOneWidget);
 
     // And back again, or the settings are a one-way door.
-    await tester.tap(find.text('Console'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Library and Search'));
+    await tester.tap(find.text('Close'));
     await tester.pumpAndSettle();
     expect(find.text('Search'), findsWidgets);
   });

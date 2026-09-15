@@ -125,7 +125,8 @@ class _ConsoleViewState extends State<ConsoleView> {
             const SizedBox(height: Ar.space6),
             _server(),
             if (widget.state.local) _address(),
-            _configuration(),
+            _whereTheDataLives(),
+            _fromTheConfigFile(),
           ]
         : [
             _header(),
@@ -139,10 +140,10 @@ class _ConsoleViewState extends State<ConsoleView> {
           ],
   );
 
-  /// The menu across the top, then the sections under it.
+  /// The sections, whichever screen they belong to.
   ///
-  /// Both screens are drawn by this, so the menu is in one place and the
-  /// window does not change shape between them.
+  /// Both are drawn by this, so the window does not change shape between them
+  /// — the header, and the Configuration pill in it, are the only fixed part.
   Widget _screen(List<Widget> sections) => Scaffold(
     backgroundColor: Ar.bg,
     body: Stack(
@@ -153,7 +154,6 @@ class _ConsoleViewState extends State<ConsoleView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _menu(),
               Expanded(
                 child: Center(
                   child: ConstrainedBox(
@@ -190,35 +190,6 @@ class _ConsoleViewState extends State<ConsoleView> {
   /// to scroll past the settings to use. They are a screen of their own now,
   /// and this is how it is reached. The entry for the screen already on is
   /// dead rather than missing, so the menu reads the same from both.
-  Widget _menu() => MenuBar(
-    style: MenuStyle(
-      backgroundColor: WidgetStatePropertyAll(Ar.surface),
-      elevation: const WidgetStatePropertyAll(0),
-      shape: const WidgetStatePropertyAll(RoundedRectangleBorder()),
-    ),
-    children: [
-      SubmenuButton(
-        menuChildren: [
-          MenuItemButton(
-            leadingIcon: const Icon(Icons.menu_book_rounded, size: 16),
-            onPressed: _settings
-                ? () => setState(() => _settings = false)
-                : null,
-            child: const Text('Library and Search'),
-          ),
-          MenuItemButton(
-            leadingIcon: const Icon(Icons.tune_rounded, size: 16),
-            onPressed: _settings
-                ? null
-                : () => setState(() => _settings = true),
-            child: const Text('Settings'),
-          ),
-        ],
-        child: const Text('Console'),
-      ),
-    ],
-  );
-
   // ---- the pieces ------------------------------------------------------
 
   Widget _header() {
@@ -273,6 +244,26 @@ class _ConsoleViewState extends State<ConsoleView> {
             foreground: widget.state.running ? Ar.accent2800 : Ar.dim(0.6),
             fontSize: 12.5,
           ),
+        ),
+        const SizedBox(width: Ar.space3),
+        // Here rather than in a menu bar across the top. That bar held one
+        // submenu, labelled "Console", and everything but the library was
+        // behind that word — a strip of grey somebody has to think to click,
+        // which is exactly what happened. The app spells this control as a
+        // pill: label, Icons.tune, and a Close beside the title to come back.
+        Padding(
+          padding: const EdgeInsets.only(top: Ar.space2),
+          child: _settings
+              ? PillButton(
+                  label: 'Close',
+                  icon: Icons.arrow_back,
+                  onTap: () => setState(() => _settings = false),
+                )
+              : PillButton(
+                  label: 'Configuration',
+                  icon: Icons.tune,
+                  onTap: () => setState(() => _settings = true),
+                ),
         ),
       ],
     );
@@ -424,11 +415,18 @@ class _ConsoleViewState extends State<ConsoleView> {
     ]),
   );
 
-  Widget _configuration() => _section(
-    'Configuration',
-    'Where the library is, and what the rest of it says. Everything but the '
-        'library is read-only here: a window that edits somebody\'s master '
-        'key is a window that can lose it.',
+  /// Where the library is — the one thing on this page that is editable.
+  ///
+  /// Split out of a section that was called "Configuration", which is now the
+  /// name of the page it sits on. A section inside a page of the same name
+  /// reads as a mistake, and this half is also the only half somebody can
+  /// change.
+  Widget _whereTheDataLives() => _section(
+    'Where the data lives',
+    'The decrypted library, and nothing else. It is the most complete copy of '
+        'your reading that exists anywhere, because a mirror runs no '
+        'retention — so it lives with your data rather than in a cache '
+        'directory, whatever it is still spelled.',
     _card([
       _row(
         'Library',
@@ -482,6 +480,18 @@ class _ConsoleViewState extends State<ConsoleView> {
                   'opened read-only. Needs no server, token or master key, '
                   'and nothing here will pull into it.',
       ),
+    ]),
+  );
+
+  /// What the config file says, read and not edited.
+  ///
+  /// A window that edits somebody's master key is a window that can lose it,
+  /// so these are shown and never written from here. The file itself is named
+  /// in the first row, which is where to go and change them.
+  Widget _fromTheConfigFile() => _section(
+    'From the config file',
+    'Read here, edited there. The master key is never shown at all.',
+    _card([
       for (final (label, value) in widget.state.configRows)
         _row(
           label,

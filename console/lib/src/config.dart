@@ -229,23 +229,42 @@ String? _first(Map<String, String> env, List<String> keys) {
 
 /// Where this platform lets an unprivileged program keep things — the same
 /// three answers `config.py` gives, so both find one file.
+///
+/// The second of the pair is the **data** directory, and was the cache one
+/// until the library moved out of ~/.cache: a mirror runs no retention, so it
+/// is the most complete copy of a library rather than a subset of one, and
+/// ~/.cache is what a disk cleaner empties. It is still *spelled* cache
+/// everywhere — see `config.py`, which explains why renaming it is not worth
+/// what it would cost.
+///
+/// These two must move together. A window that opens a different library from
+/// the server it supervises reports an empty mirror that is syncing fine.
 (String, String) _home(Map<String, String> env) {
   final home = env['HOME'] ?? env['USERPROFILE'] ?? '';
   if (Platform.isWindows) {
     final roaming = env['APPDATA'] ?? '$home/AppData/Roaming';
     final local = env['LOCALAPPDATA'] ?? '$home/AppData/Local';
-    return ('$roaming/$_name', '$local/$_name/cache');
+    return ('$roaming/$_name', '$local/$_name');
   }
   if (Platform.isMacOS) {
-    return (
-      '$home/Library/Application Support/$_name',
-      '$home/Library/Caches/$_name',
-    );
+    // One directory for both, which is what this platform offers.
+    final base = '$home/Library/Application Support/$_name';
+    return (base, base);
   }
   return (
     '${_first(env, ['XDG_CONFIG_HOME']) ?? '$home/.config'}/$_name',
-    '${_first(env, ['XDG_CACHE_HOME']) ?? '$home/.cache'}/$_name',
+    '${_xdgDataHome(env, home)}/$_name',
   );
+}
+
+/// XDG_DATA_HOME when it is absolute, else the ~/.local/share it defines.
+///
+/// Relative is ignored rather than resolved, as the specification requires:
+/// resolving one against the working directory is how a window started from
+/// two different shells opens two different libraries.
+String _xdgDataHome(Map<String, String> env, String home) {
+  final named = _first(env, ['XDG_DATA_HOME']) ?? '';
+  return named.startsWith('/') ? named : '$home/.local/share';
 }
 
 String defaultConfigPath([Map<String, String>? environment]) =>

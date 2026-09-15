@@ -161,4 +161,52 @@ void main() {
       9000,
     );
   });
+
+  group('where the library goes when nobody says', () {
+    // Linux only: the branch is per-platform and this suite runs on one of
+    // them. macOS puts both in Application Support and is asserted in
+    // tests/test_config.py, which can state a platform rather than be one.
+    test('the data directory, not the cache one', () {
+      // It was XDG_CACHE_HOME. A mirror runs no retention, so it is the most
+      // complete copy of a library rather than a subset of one — and ~/.cache
+      // is exactly what a disk cleaner empties.
+      final env = {
+        'HOME': '/home/somebody',
+        'XDG_CACHE_HOME': '/tmp/cache',
+        'XDG_DATA_HOME': '',
+      };
+      expect(
+        defaultCacheDir(env),
+        '/home/somebody/.local/share/summareader-mcp',
+      );
+      expect(
+        defaultCacheDir(env),
+        isNot(contains('cache')),
+        reason: 'the key is still spelled cache; the location must not be',
+      );
+    });
+
+    test('an absolute XDG_DATA_HOME is followed, a relative one is not', () {
+      const home = {'HOME': '/home/somebody'};
+      expect(
+        defaultCacheDir({...home, 'XDG_DATA_HOME': '/mnt/big/share'}),
+        '/mnt/big/share/summareader-mcp',
+      );
+      expect(
+        defaultCacheDir({...home, 'XDG_DATA_HOME': 'relative/share'}),
+        '/home/somebody/.local/share/summareader-mcp',
+        reason:
+            'the specification says absolute, and resolving a relative one '
+            'against the working directory opens two libraries',
+      );
+    });
+
+    test('the config file did not move with it', () {
+      final env = {'HOME': '/home/somebody', 'XDG_CONFIG_HOME': ''};
+      expect(
+        defaultConfigPath(env),
+        '/home/somebody/.config/summareader-mcp/summareader-mcp.json',
+      );
+    });
+  });
 }
