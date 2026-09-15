@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:summareader_mcp_console/src/first_run.dart';
 import 'package:summareader_mcp_console/src/config.dart';
 
 /// A config file with everything awkward in it: comment keys, a key this
@@ -207,6 +208,90 @@ void main() {
         defaultConfigPath(env),
         '/home/somebody/.config/summareader-mcp/summareader-mcp.json',
       );
+    });
+  });
+
+  group('whether anybody has said where', () {
+    late Directory dir;
+
+    setUp(() => dir = Directory.systemTemp.createTempSync('mcp-said'));
+    tearDown(() => dir.deleteSync(recursive: true));
+
+    File place(String text) =>
+        File('${dir.path}/summareader-mcp.json')..writeAsStringSync(text);
+
+    test('nothing said means nothing chosen', () {
+      final config = MirrorConfig.load(
+        file: place('{"server": "https://x.invalid"}').path,
+        environment: const {},
+      );
+      expect(config.saidWhere, isFalse);
+    });
+
+    test('a cache_dir key counts', () {
+      final config = MirrorConfig.load(
+        file: place('{"cache_dir": "/srv/mirror"}').path,
+        environment: const {},
+      );
+      expect(config.saidWhere, isTrue);
+      expect(config.cacheDir, '/srv/mirror');
+    });
+
+    test('the environment counts, which is what the container passes', () {
+      final config = MirrorConfig.load(
+        file: place('{}').path,
+        environment: const {'SUMMAREADER_MCP_CACHE': '/cache'},
+      );
+      expect(
+        config.saidWhere,
+        isTrue,
+        reason: 'a container must never be asked a question',
+      );
+    });
+
+    test('naming a library counts too', () {
+      // The other way to say where: somebody reading an existing file has
+      // answered the question in a different sentence.
+      final config = MirrorConfig.load(
+        file: place('{"library": "/home/you/library.sqlite"}').path,
+        environment: const {},
+      );
+      expect(config.saidWhere, isTrue);
+    });
+  });
+
+  group('emptying a library', () {
+    late Directory dir;
+
+    setUp(() => dir = Directory.systemTemp.createTempSync('mcp-empty'));
+    tearDown(() => dir.deleteSync(recursive: true));
+
+    test('takes the library and its log, and leaves the config', () async {
+      // On macOS the config file is in this directory too — one directory is
+      // the whole installation there — and it holds the master key, which is
+      // the one thing here that is not recoverable.
+      for (final name in [
+        'library.sqlite',
+        'library.sqlite-wal',
+        'library.sqlite-shm',
+      ]) {
+        File('${dir.path}/$name').writeAsStringSync('x');
+      }
+      File('${dir.path}/summareader-mcp.json').writeAsStringSync('{"a": 1}');
+
+      expect(holdsALibrary(dir.path), isTrue);
+      expect(await emptyLibrary(dir.path), isTrue);
+      expect(holdsALibrary(dir.path), isFalse);
+      expect(
+        File('${dir.path}/summareader-mcp.json').existsSync(),
+        isTrue,
+        reason: 'the master key is in there',
+      );
+    });
+
+    test('an empty directory is not a library', () async {
+      expect(holdsALibrary(dir.path), isFalse);
+      expect(await emptyLibrary(dir.path), isFalse);
     });
   });
 }

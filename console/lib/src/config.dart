@@ -22,6 +22,7 @@ class MirrorConfig {
   const MirrorConfig({
     required this.file,
     required this.cacheDir,
+    this.saidWhere = true,
     this.server,
     this.token,
     this.masterKey,
@@ -57,6 +58,11 @@ class MirrorConfig {
   String get database => library ?? '$cacheDir/library.sqlite';
 
   bool get readsALocalLibrary => library != null;
+
+  /// False when nothing named a location — no `cache_dir`, no
+  /// SUMMAREADER_MCP_CACHE, no library. The one condition the window asks its
+  /// first-run question on; writing the key is what stops it asking again.
+  final bool saidWhere;
 
   /// A mirror pulls; these three are what it pulls with. Named rather than
   /// counted, so the sentence the console shows says which one is missing.
@@ -120,10 +126,15 @@ class MirrorConfig {
       return value is String && value.isNotEmpty ? value : null;
     }
 
+    final said = pick('cache_dir', 'SUMMAREADER_MCP_CACHE');
     return MirrorConfig(
       file: path,
-      cacheDir:
-          pick('cache_dir', 'SUMMAREADER_MCP_CACHE') ?? defaultCacheDir(env),
+      cacheDir: said ?? defaultCacheDir(env),
+      // Nothing said where, so nobody has been asked. Reading a `library` key
+      // counts too — that is the other way to name a file, and somebody who
+      // has named one has answered the question.
+      saidWhere:
+          said != null || pick('library', 'SUMMAREADER_MCP_LIBRARY') != null,
       server: pick('server', 'SUMMAREADER_SYNC_URL'),
       token: pick('token', 'SUMMAREADER_DEVICE_TOKEN'),
       masterKey: pick('master_key', 'SUMMAREADER_MASTER_KEY'),

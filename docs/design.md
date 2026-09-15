@@ -21,9 +21,18 @@ makes it safe to run at all.
 Its local copy is plaintext. Whoever can read that disk can read the whole
 library.
 
-So the copy is a **cache**, deliberately: rebuildable from the log, safe to
-delete, never the only copy of anything. Delete it and the next run rebuilds
-it.
+The copy is **rebuildable**: it comes from the log, and deleting it costs a
+re-pull rather than anything irreplaceable. That is not the same as
+disposable, and this paragraph used to say "safe to delete" three lines above
+the one that says it holds more than any of your devices do. Both cannot be
+true, and the second is the one that matters — so it lives in the data
+directory, `~/.local/share/summareader-mcp`, and not in `~/.cache`, which is
+what a disk cleaner empties.
+
+It is still *spelled* `cache_dir`, in the config file and in
+`SUMMAREADER_MCP_CACHE`. Renaming those would touch both Dockerfiles, both
+compose files, the systemd unit, `run.sh`, `freeze.sh` and every install that
+already exists, to change a word.
 
 - Run it on a machine whose disk you trust, and encrypt that disk.
 - **Do not run it on the same host as your sync server.** That host would then

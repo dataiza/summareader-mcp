@@ -12,7 +12,7 @@ interpreter — no Python needed on the machine.
 
 `BIN_DIR`, `CONFIG`, `CACHE_DIR`, `PORT` and `HOST` override where things go.
 The defaults are `~/.local/bin`, `./summareader-mcp.local.json`,
-`~/.cache/summareader-mcp`, `8100` and `127.0.0.1`.
+`~/.local/share/summareader-mcp`, `8100` and `127.0.0.1`.
 
 **`HOST` is refused without a `bearer_token` in the config.** That address
 serves the entire library, in plaintext, to anything that can route to it.

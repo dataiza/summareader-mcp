@@ -59,9 +59,16 @@ plus `name`.
 | `cache_dir` | `SUMMAREADER_MCP_CACHE` | where `library.sqlite` lives |
 | — | `SUMMAREADER_MCP_CONFIG` | which file the above is read from |
 
-Defaults: `~/.config/summareader-mcp/` and `~/.cache/summareader-mcp/` on Linux
-(XDG honoured), `~/Library/Application Support/` and `~/Library/Caches/` on
-macOS, `%APPDATA%`/`%LOCALAPPDATA%` on Windows.
+Defaults: `~/.config/summareader-mcp/` for the config and
+`~/.local/share/summareader-mcp/` for the library on Linux (XDG honoured;
+`XDG_DATA_HOME` must be absolute or it is ignored), both in
+`~/Library/Application Support/summareader-mcp/` on macOS,
+`%APPDATA%`/`%LOCALAPPDATA%` on Windows.
+
+The key is still spelled `cache_dir` and it is not a cache: the mirror runs no
+retention, so it holds more than any of your devices do. It is named that
+because renaming it would touch both Dockerfiles, both compose files, the
+systemd unit and every install that already exists.
 
 A bearer token, for anything wider than loopback:
 
@@ -93,7 +100,7 @@ HOST=0.0.0.0 PORT=8300 ./install.sh           # reachable from the LAN
 
 `BIN_DIR`, `CONFIG`, `CACHE_DIR`, `PORT`, `HOST` override where things go;
 defaults are `~/.local/bin`, `./summareader-mcp.local.json`,
-`~/.cache/summareader-mcp`, `8100`, `127.0.0.1`. **A `HOST` wider than loopback
+`~/.local/share/summareader-mcp`, `8100`, `127.0.0.1`. **A `HOST` wider than loopback
 is refused while `bearer_token` is unset.** To keep it running while logged
 out: `sudo loginctl enable-linger "$USER"`.
 
@@ -212,13 +219,16 @@ summareader-mcp --remote http://box:8100 search "borrow checker" --since 30d
 `serve` and `pull` refuse under `--remote`: both need the master key, and a
 reader over a port has none.
 
-Starting fresh — the cache is one file, safe to delete:
+Starting fresh — one file, and the log rebuilds it:
 
 ```sh
 systemctl --user stop summareader-mcp    # or: docker compose down
-rm ~/.cache/summareader-mcp/library.sqlite*
+rm ~/.local/share/summareader-mcp/library.sqlite*
 summareader-mcp pull                     # replays the log from zero
 ```
+
+It costs every blob downloaded again, which on a library of any size is the
+reason to think before doing it.
 
 ### Terminal interface
 

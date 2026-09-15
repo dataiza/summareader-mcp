@@ -51,6 +51,7 @@ import 'package:summareader_ui/summareader_ui.dart';
 
 import 'src/addresses.dart';
 import 'src/config.dart';
+import 'src/first_run.dart';
 import 'src/console.dart';
 import 'src/library.dart';
 import 'src/mirror.dart';
@@ -131,6 +132,14 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     super.initState();
     _config = widget.options.configuration;
     _open();
+
+    // After the first frame, because a dialog needs a Navigator and there is
+    // none until this widget is in a tree. Only when nothing named a location:
+    // a `cache_dir`, SUMMAREADER_MCP_CACHE or a library all mean the question
+    // is already answered.
+    if (!_config.saidWhere) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _askWhereToPutIt());
+    }
     if (_local) {
       // Flag first, then whatever the config file and the environment say —
       // which is the whole point of writing the address back: this window
@@ -438,6 +447,32 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   /// already had, and the unit is rewritten when there is one, because it
   /// carries SUMMAREADER_MCP_CACHE and a unit that disagrees with the config
   /// brings the old library back at the next login.
+  /// The first-run question, asked once and then never again.
+  ///
+  /// Writing the key is what makes it once — `saidWhere` is false only while
+  /// nothing has. Dismissing without answering leaves the default and asks
+  /// again, which is right: the question is "where", and no answer is not one.
+  Future<void> _askWhereToPutIt() async {
+    if (!mounted) return;
+    final wanted = await askWhereTheLibraryGoes(context, _config.cacheDir);
+    if (wanted == null || !mounted) return;
+
+    // Before anything is written, because the answer decides what is written.
+    // Finding a library here is almost always what was meant, so this only
+    // comes up when there is something to lose — and here that is time rather
+    // than anything irreplaceable, since the mirror rebuilds from the log.
+    if (holdsALibrary(wanted)) {
+      await askAboutWhatIsAlreadyThere(context, wanted);
+      if (!mounted) return;
+    }
+
+    // Through the same route the Configuration row uses, which already stops
+    // the server, writes the key, rewrites the unit and reopens the library in
+    // the right order — a unit that disagrees with the config brings the old
+    // directory back at the next login.
+    await _setLibrary(wanted, existing: false);
+  }
+
   Future<void> _setLibrary(String path, {required bool existing}) =>
       _act('moving', () async {
         final trimmed = path.trim();
