@@ -4,6 +4,25 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
+## 0.4.1
+
+Two things the AppImage in 0.4.0 shipped without, both found while giving the
+sync server's console the same treatment.
+
+- **The licence text is inside the image.** An image is a single file with no
+  directory beside it, so `usr/share/doc` is the only place there is — and the
+  AGPL is not shy about the text travelling with the binary. 0.4.0 carried it
+  nowhere.
+- **The 48×48 icon is back.** The build looked for `magick`, which is
+  ImageMagick 7's name for the tool; Debian and Ubuntu ship version 6, whose
+  package provides `convert` and no `magick` at all. So installing ImageMagick
+  on the runner changed nothing: the build took its graceful branch, said so,
+  and released a size short. It looks for both names now.
+
+The second one is the bill for degrading rather than failing, which is still
+the right trade for an optional icon — but a skip is silent, and a silence
+ships.
+
 ## 0.4.0
 
 ### Pairing, instead of editing three values in by hand
