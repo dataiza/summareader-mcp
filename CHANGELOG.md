@@ -4,6 +4,22 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
+## 0.4.3
+
+### The launcher entry said "SummaReader Sync Server"
+
+It was ported from the sync server's console with the application id replaced
+and the four display strings left alone, so anyone who added this to their
+applications menu got an icon naming the wrong program. The AppImage's own
+copy of the entry was right all along; only the installed one was wrong.
+
+The file's own comment had warned about this — "two spellings of the same entry
+is how the menu and the window stop matching" — and nothing enforced it. A test
+does now, in both repositories: it installs an entry and compares every display
+field against the copy packed into the image.
+
+Toggling **In the applications menu** off and on in Configuration rewrites it.
+
 ## 0.4.2
 
 ### The menu entry survives tidying your downloads

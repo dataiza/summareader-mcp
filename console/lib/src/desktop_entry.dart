@@ -123,14 +123,14 @@ Future<String?> addToMenu(
     await entry.writeAsString('''
 [Desktop Entry]
 Type=Application
-Name=SummaReader Sync Server
-GenericName=Sync server
-Comment=Keeps a SummaReader library in step across your own devices
+Name=SummaReader MCP
+GenericName=MCP server
+Comment=An MCP server over your SummaReader library
 Exec=${image.replaceAll(' ', r'\ ')}
 Icon=$desktopId
 Terminal=false
 Categories=Utility;Network;
-Keywords=summareader;sync;server;reader;
+Keywords=summareader;mcp;reader;sync;
 StartupWMClass=$desktopId
 ''');
 
