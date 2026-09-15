@@ -72,7 +72,7 @@ class ConsoleState {
   final bool busy;
 }
 
-class ConsoleView extends StatelessWidget {
+class ConsoleView extends StatefulWidget {
   const ConsoleView({
     super.key,
     required this.state,
@@ -102,47 +102,121 @@ class ConsoleView extends StatelessWidget {
   final void Function(String path, {required bool existing})? onLibrary;
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Ar.bg,
-      body: Stack(
-        children: [
-          SafeArea(
-            child: Center(
-              child: ConstrainedBox(
-                // The reading measure the app uses for its own settings pane.
-                // Full-width rows on a maximised window put the label and the
-                // control at opposite ends of a metre of desk.
-                constraints: const BoxConstraints(maxWidth: 980),
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(
-                    Ar.space6,
-                    Ar.space6,
-                    Ar.space6,
-                    Ar.space8,
+  State<ConsoleView> createState() => _ConsoleViewState();
+}
+
+class _ConsoleViewState extends State<ConsoleView> {
+  /// Which of the two screens is on. A field rather than a route, because
+  /// the state above rebuilds this window every two seconds: a pushed route
+  /// would keep the console it was pushed with, and Settings would sit there
+  /// with a Start button that never became Stop.
+  bool _settings = false;
+
+  @override
+  Widget build(BuildContext context) => _screen(
+    _settings
+        ? [
+            _header(),
+            if (widget.state.note case final note?) ...[
+              const SizedBox(height: Ar.space4),
+              _note(note),
+            ],
+            const SizedBox(height: Ar.space6),
+            _server(),
+            if (widget.state.local) _address(),
+            _configuration(),
+          ]
+        : [
+            _header(),
+            if (widget.state.note case final note?) ...[
+              const SizedBox(height: Ar.space4),
+              _note(note),
+            ],
+            const SizedBox(height: Ar.space6),
+            _library(),
+            _search(context),
+          ],
+  );
+
+  /// The menu across the top, then the sections under it.
+  ///
+  /// Both screens are drawn by this, so the menu is in one place and the
+  /// window does not change shape between them.
+  Widget _screen(List<Widget> sections) => Scaffold(
+    backgroundColor: Ar.bg,
+    body: Stack(
+      children: [
+        SafeArea(
+          // Stretched, so the menu is a bar across the top rather than a
+          // lozenge floating in the middle of it.
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _menu(),
+              Expanded(
+                child: Center(
+                  child: ConstrainedBox(
+                    // The reading measure the app uses for its own settings
+                    // pane. Full-width rows on a maximised window put the
+                    // label and the control at opposite ends of a metre of
+                    // desk.
+                    constraints: const BoxConstraints(maxWidth: 980),
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(
+                        Ar.space6,
+                        Ar.space6,
+                        Ar.space6,
+                        Ar.space8,
+                      ),
+                      children: sections,
+                    ),
                   ),
-                  children: [
-                    _header(),
-                    if (state.note case final note?) ...[
-                      const SizedBox(height: Ar.space4),
-                      _note(note),
-                    ],
-                    const SizedBox(height: Ar.space6),
-                    _library(),
-                    _server(),
-                    if (state.local) _address(),
-                    _configuration(),
-                    _search(context),
-                  ],
                 ),
               ),
-            ),
+            ],
           ),
-          if (state.message.isNotEmpty) ArToast(state.message),
+        ),
+        if (widget.state.message.isNotEmpty) ArToast(widget.state.message),
+      ],
+    ),
+  );
+
+  /// The top menu.
+  ///
+  /// The server, the address and the configuration used to sit between the
+  /// library and the search box, which are the two things anybody opens this
+  /// window for — so the window it was worth keeping open was the one you had
+  /// to scroll past the settings to use. They are a screen of their own now,
+  /// and this is how it is reached. The entry for the screen already on is
+  /// dead rather than missing, so the menu reads the same from both.
+  Widget _menu() => MenuBar(
+    style: MenuStyle(
+      backgroundColor: WidgetStatePropertyAll(Ar.surface),
+      elevation: const WidgetStatePropertyAll(0),
+      shape: const WidgetStatePropertyAll(RoundedRectangleBorder()),
+    ),
+    children: [
+      SubmenuButton(
+        menuChildren: [
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.menu_book_rounded, size: 16),
+            onPressed: _settings
+                ? () => setState(() => _settings = false)
+                : null,
+            child: const Text('Library and Search'),
+          ),
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.tune_rounded, size: 16),
+            onPressed: _settings
+                ? null
+                : () => setState(() => _settings = true),
+            child: const Text('Settings'),
+          ),
         ],
+        child: const Text('Console'),
       ),
-    );
-  }
+    ],
+  );
 
   // ---- the pieces ------------------------------------------------------
 
@@ -159,7 +233,10 @@ class ConsoleView extends StatelessWidget {
               const SizedBox(height: Ar.space1),
               Text(title, style: Ar.headingStyle(28, forText: title)),
               const SizedBox(height: Ar.space1),
-              Text(state.status, style: Ar.bodyStyle(13.5, color: Ar.dim(0.6))),
+              Text(
+                widget.state.status,
+                style: Ar.bodyStyle(13.5, color: Ar.dim(0.6)),
+              ),
             ],
           ),
         ),
@@ -168,9 +245,9 @@ class ConsoleView extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(top: Ar.space3),
           child: Tag(
-            label: state.running ? 'running' : 'stopped',
-            background: state.running ? Ar.accent2200 : Ar.neutral200,
-            foreground: state.running ? Ar.accent2800 : Ar.dim(0.6),
+            label: widget.state.running ? 'running' : 'stopped',
+            background: widget.state.running ? Ar.accent2200 : Ar.neutral200,
+            foreground: widget.state.running ? Ar.accent2800 : Ar.dim(0.6),
             fontSize: 12.5,
           ),
         ),
@@ -199,7 +276,7 @@ class ConsoleView extends StatelessWidget {
         spacing: Ar.space6,
         runSpacing: Ar.space4,
         children: [
-          for (final (label, value) in state.stats)
+          for (final (label, value) in widget.state.stats)
             SizedBox(
               // A fixed measure, so the numbers line up in a grid instead of
               // reflowing every two seconds as the values change width.
@@ -231,7 +308,7 @@ class ConsoleView extends StatelessWidget {
 
   Widget _server() => _section(
     'The server',
-    state.local
+    widget.state.local
         ? 'The mirror runs as its own process, started with exactly the '
               'command the systemd unit holds.'
         : 'Somewhere else — this console is reading, not running anything.',
@@ -246,9 +323,13 @@ class ConsoleView extends StatelessWidget {
           // label says what pressing it will do — including when a unit owns
           // the server and it is systemctl doing it.
           PrimaryButton(
-            label: state.running ? 'Stop' : 'Start',
-            icon: state.running ? Icons.stop_rounded : Icons.play_arrow_rounded,
-            onTap: state.local && !state.busy ? onToggle : null,
+            label: widget.state.running ? 'Stop' : 'Start',
+            icon: widget.state.running
+                ? Icons.stop_rounded
+                : Icons.play_arrow_rounded,
+            onTap: widget.state.local && !widget.state.busy
+                ? widget.onToggle
+                : null,
           ),
           // "Sync now", not "Pull now", though pulling is all it does. The
           // app's button says Sync now and this is the same errand from the
@@ -258,17 +339,19 @@ class ConsoleView extends StatelessWidget {
             label: 'Sync now',
             icon: Icons.sync_rounded,
             height: 40,
-            onTap: state.local && !state.busy ? onPull : null,
+            onTap: widget.state.local && !widget.state.busy
+                ? widget.onPull
+                : null,
           ),
         ],
       ),
-      if (state.atLogin case final at?)
+      if (widget.state.atLogin case final at?)
         _row(
           'Start at login',
           ArSwitch(
             label: 'Start at login',
             value: at,
-            onChanged: state.busy ? null : onAtLogin,
+            onChanged: widget.state.busy ? null : widget.onAtLogin,
           ),
           hint:
               'Writes a user service, so the mirror comes back after a '
@@ -289,13 +372,13 @@ class ConsoleView extends StatelessWidget {
           runSpacing: 6,
           alignment: WrapAlignment.end,
           children: [
-            for (final candidate in state.hosts)
+            for (final candidate in widget.state.hosts)
               Segment(
                 label: candidate.toString(),
-                selected: candidate.ip == state.host,
-                onTap: onBind == null || state.busy
+                selected: candidate.ip == widget.state.host,
+                onTap: widget.onBind == null || widget.state.busy
                     ? null
-                    : () => onBind!(candidate.ip),
+                    : () => widget.onBind!(candidate.ip),
               ),
           ],
         ),
@@ -309,7 +392,10 @@ class ConsoleView extends StatelessWidget {
         'Port',
         SizedBox(
           width: 110,
-          child: _PortField(port: '${state.port}', onSubmitted: onPort),
+          child: _PortField(
+            port: '${widget.state.port}',
+            onSubmitted: widget.onPort,
+          ),
         ),
       ),
     ]),
@@ -332,33 +418,40 @@ class ConsoleView extends StatelessWidget {
               children: [
                 Segment(
                   label: 'Its own copy',
-                  selected: state.ownsLibrary,
-                  onTap: state.busy
+                  selected: widget.state.ownsLibrary,
+                  onTap: widget.state.busy
                       ? null
-                      : () =>
-                            onLibrary?.call(state.libraryPath, existing: false),
+                      : () => widget.onLibrary?.call(
+                          widget.state.libraryPath,
+                          existing: false,
+                        ),
                 ),
                 Segment(
                   label: 'An existing library',
-                  selected: !state.ownsLibrary,
-                  onTap: state.busy
+                  selected: !widget.state.ownsLibrary,
+                  onTap: widget.state.busy
                       ? null
-                      : () =>
-                            onLibrary?.call(state.libraryPath, existing: true),
+                      : () => widget.onLibrary?.call(
+                          widget.state.libraryPath,
+                          existing: true,
+                        ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
             _PathField(
-              key: ValueKey('library:${state.libraryPath}'),
-              path: state.libraryPath,
-              onSubmitted: onLibrary == null || state.busy
+              key: ValueKey('library:${widget.state.libraryPath}'),
+              path: widget.state.libraryPath,
+              onSubmitted: widget.onLibrary == null || widget.state.busy
                   ? null
-                  : (value) => onLibrary!(value, existing: !state.ownsLibrary),
+                  : (value) => widget.onLibrary!(
+                      value,
+                      existing: !widget.state.ownsLibrary,
+                    ),
             ),
           ],
         ),
-        hint: state.ownsLibrary
+        hint: widget.state.ownsLibrary
             ? 'This mirror fills it, by pulling and decrypting. The path is '
                   'the directory it lives in; the library itself is made on '
                   'the first pull.'
@@ -366,7 +459,7 @@ class ConsoleView extends StatelessWidget {
                   'opened read-only. Needs no server, token or master key, '
                   'and nothing here will pull into it.',
       ),
-      for (final (label, value) in state.configRows)
+      for (final (label, value) in widget.state.configRows)
         _row(
           label,
           // Selectable, because the whole point of showing a path is that
@@ -426,27 +519,29 @@ class ConsoleView extends StatelessWidget {
           children: [
             Expanded(
               child: ArField(
-                controller: query,
+                controller: widget.query,
                 // The example is the documentation somebody actually reads.
                 // An empty box that takes a query language and says "a word"
                 // is a box nobody types a field into.
                 hint: 'rust source:"The Morning Paper" since:7d unread:yes',
                 icon: Icons.search_rounded,
-                onSubmitted: onSearch,
+                onSubmitted: widget.onSearch,
               ),
             ),
             const SizedBox(width: Ar.space2),
             PillButton(
               label: 'Search',
               height: 38,
-              onTap: onSearch == null ? null : () => onSearch!(query.text),
+              onTap: widget.onSearch == null
+                  ? null
+                  : () => widget.onSearch!(widget.query.text),
             ),
           ],
         ),
         const SizedBox(height: Ar.space2),
         _fields(),
         const SizedBox(height: Ar.space3),
-        if (state.results.isEmpty)
+        if (widget.state.results.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: Ar.space4),
             child: Text(
@@ -455,7 +550,7 @@ class ConsoleView extends StatelessWidget {
             ),
           )
         else
-          for (final item in state.results)
+          for (final item in widget.state.results)
             Padding(
               padding: const EdgeInsets.only(bottom: Ar.space2),
               child: SurfaceCard(

@@ -4,6 +4,10 @@
 /// asking of it are cheap: does a console pointed at somebody else's mirror
 /// say so and refuse to run anything, is a credential ever printed, and do
 /// the numbers reach the pane.
+///
+/// Since the window was split in two, the other question worth asking is
+/// whether anything became unreachable: the settings are a menu away now, and
+/// a control nobody can get to is worse than one that is merely dim.
 library;
 
 import 'package:flutter/material.dart';
@@ -42,7 +46,53 @@ ConsoleState reading(String? note, {bool local = false}) => ConsoleState(
   configRows: const [('File', '/home/you/config.json')],
 );
 
+/// Walks the top menu to the settings, which is where everything but the
+/// library and the search box now lives.
+Future<void> openSettings(WidgetTester tester) async {
+  await tester.tap(find.text('Console'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Settings'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
+  testWidgets('the window opens on the library and the search box', (
+    tester,
+  ) async {
+    await draw(tester, reading(null, local: true));
+
+    expect(find.text('Library'), findsOneWidget);
+    // Twice over: the heading, and the button beside the box.
+    expect(find.text('Search'), findsWidgets);
+    // The three that used to sit between them, and were the reason the search
+    // results started below the fold.
+    expect(find.text('The server'), findsNothing);
+    expect(find.text('Address'), findsNothing);
+    expect(find.text('Configuration'), findsNothing);
+  });
+
+  testWidgets('the menu reaches everything that moved', (tester) async {
+    await draw(tester, reading(null, local: true));
+    await openSettings(tester);
+
+    expect(find.text('The server'), findsOneWidget);
+    expect(find.text('Address'), findsOneWidget);
+    expect(find.text('Configuration'), findsOneWidget);
+    expect(find.text('Start'), findsOneWidget);
+    expect(find.text('Sync now'), findsOneWidget);
+    // The library path is edited here, not read: it is the one line of the
+    // configuration this window writes.
+    expect(find.text('Its own copy'), findsOneWidget);
+    expect(find.text('/home/you/config.json'), findsOneWidget);
+
+    // And back again, or the settings are a one-way door.
+    await tester.tap(find.text('Console'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Library and Search'));
+    await tester.pumpAndSettle();
+    expect(find.text('Search'), findsWidgets);
+  });
+
   testWidgets('a mirror it does not hold is greyed out with a reason', (
     tester,
   ) async {
@@ -54,7 +104,11 @@ void main() {
     );
 
     expect(find.textContaining('http://box:8100'), findsWidgets);
+    // The sentence stays on the first screen as well as beside the buttons it
+    // is about: a mirror that will not pull is the answer to "why has nothing
+    // arrived", which is asked of the library, not of the settings.
     expect(find.textContaining('Start, Stop and Pull'), findsOneWidget);
+    await openSettings(tester);
 
     // Not merely dim: pressing it has to do nothing. A disabled-looking button
     // that still starts a server is the worse half of this bug.
@@ -108,6 +162,8 @@ void main() {
       find.text('What the borrow checker actually proves'),
       findsOneWidget,
     );
+
+    await openSettings(tester);
     // The token is described, never printed. A window that shows a credential
     // is a window somebody screenshots.
     expect(find.text('set'), findsOneWidget);

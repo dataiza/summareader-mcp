@@ -1,19 +1,29 @@
 # summareader-mcp
 
-An MCP server that pairs with a SummaReader sync server **as a device**, keeps a
-decrypted copy of the library, and answers questions about it.
+An MCP server over your SummaReader library. It pairs with the sync server **as
+a device**, keeps a decrypted copy, and answers questions about what you have
+read. It reads; it never writes.
 
-It reads; it does not write. Nothing it holds ever changes, which is what
-makes it safe to point at a library you care about.
+Five ways in — MCP over stdio, MCP over HTTP, a command line, a terminal
+interface and a desktop console — all over the same functions.
 
-Three ways in — MCP, a command line and a terminal interface — over one set of
-functions, so they cannot answer the same question differently. A desktop
-console ([§7](#7-the-desktop-console)) starts and watches it from a window; it
-is a separate application, and it reads the same library through the same
-match.
+**It holds the master key and a plaintext copy of your library.** The
+encryption ends at this process, which is what it is for. Run it on a disk you
+trust, and **not** on the same host as your sync server.
 
+| Tool | Answers |
+| --- | --- |
+| `search_library` | Articles whose title, source, summary or text mention something |
+| `recent_items` | The most recently published articles |
+| `library_summary` | How much is here, how much is summarized, how far the log has been read |
+| `read_item` | One article in full, including its text |
+| `library_report` | A report over a set of articles, as Markdown, CSV or JSON |
 
-## Downloads
+Why it is built this way: [docs/design.md](docs/design.md).
+
+## Install
+
+### Downloads
 
 Built releases are on this repository's [Releases](../../releases/latest) page.
 
@@ -23,234 +33,16 @@ Built releases are on this repository's [Releases](../../releases/latest) page.
 | **Console, Linux** | a desktop, with a window | `summareader-mcp-console-linux-x64.tar.gz` |
 | **Console, macOS** | a Mac, with a window | `summareader-mcp-console-macos.zip` |
 
-A headless bundle carries the frozen mirror — one file, no Python on the machine
-it runs on — plus an installer, the unit, a wheel and a compose file. It serves
-the terminal interface too, so it is usable on its own over ssh. A console
-bundle is the window, carrying its own copy of the mirror.
-
-## Why it is a device and not part of the server
-
-The sync server holds opaque ciphertext and no keys — that is the whole design,
-and it is what "encrypted end-to-end, including on servers we run" means. So an
-MCP server running *on* the sync server could serve almost nothing: it cannot
-read a title, a summary, or anything else worth asking about.
-
-This runs where the keys are instead. It pairs like any other device, gets the
-master key the same way a second phone does, and decrypts what it reads. That
-means it is **revocable like any other device**, which is the property that
-makes it safe to run at all.
-
-## What that costs
-
-Its local copy is plaintext. Whoever can read that disk can read the whole
-library.
-
-So the copy is a **cache**, deliberately: rebuildable from the log, safe to
-delete, never the only copy of anything. Delete it and the next run rebuilds
-it. Two consequences worth stating rather than discovering:
-
-- Run it on a machine whose disk you trust, and encrypt that disk.
-- **Do not run it on the same host as your sync server.** That host would then
-  hold plaintext, which quietly undoes the sentence at the top for your own
-  deployment. This is a requirement rather than advice.
-- It holds **more** than any of your devices do. Articles, summaries and — with
-  `fetch_bodies` on, which is the default — the article text as well. It runs
-  no retention, so nothing here is ever evicted: over time this becomes the
-  most complete copy of your library that exists anywhere.
-
-## A second implementation, checked against the first
-
-This is Python; the app is Dart. Neither can import the other, so the protocol
-is implemented twice — which is a second chance to get it wrong, and every way
-of getting it wrong is silent. A mistaken HKDF label, gzip applied after the
-encryption instead of before, the MAC left joined to the ciphertext: none of
-them raise. Each produces a log that reads as empty, indistinguishable from a
-library nobody has written to.
-
-The previous version of this program is the proof. It read `title` at the top
-level of a decrypted record, where the format nests it under `data`, and
-mirrored a library of items with no titles, no sources and no summaries for
-months. `search_library` scans exactly those fields, so every query ever asked
-of it came back with nothing. It never errored.
-
-So the format is written down where both readers can see it:
-
-- **`summareader/docs/SYNC_PROTOCOL.md`** — the endpoints, the key hierarchy,
-  the envelope, every record's shape, blob naming, and the ordering rules.
-- **`summareader/docs/protocol-vectors.json`** — a fixed, public master key,
-  the subkeys derived from it, one sealed record per operation, and blob names.
-  Generated by that repo's `tool/protocol_vectors.dart`.
-
-`tests/test_vectors.py` opens all of them. If it passes, this agrees with the
-app about the envelope, the key derivation and the record format. If it fails,
-it does not — and that is otherwise a silent failure rather than a loud one.
-
-Point the tests at a checkout elsewhere with `SUMMAREADER_VECTORS=/path/to/protocol-vectors.json`.
-
-## The tools
-
-| Tool | Answers |
-| --- | --- |
-| `search_library` | Articles whose title, source, summary or text mention something |
-| `recent_items` | The most recently published articles |
-| `library_summary` | How much is here, how much is summarized, how far the log has been read |
-| `read_item` | One article in full, including its text |
-| `library_report` | A written report over a set of articles, as Markdown, CSV or JSON |
-
-`search_library` narrows by `query` (title, source, summary and article text at
-once), `title` or `source` alone, `unread`, `summarized`, and four times:
-`since`/`until` for when an article was published, `read_since`/`read_until`
-for when it was read. Each of those takes `3h`, `7d`, `3w` or a
-date like `2026-08-01`. The command line takes the same set as flags.
-
-A needle matches where a word starts, so `rust` finds "Rust" and "rustc" but
-not "trust". It is a substring from there on: the whole query has to appear in
-one column as typed, and there is no stemming.
-
-Read times are what this mirror saw, not what the log said: a read record
-carries `read`, `saved` and `position`, and no timestamp, so the arrival of one
-is the closest thing to a read time that exists. A backfill is therefore left
-unstamped rather than claiming a decade of reading happened the afternoon the
-mirror was set up, which means `read_since` answers for what has been read
-since this started running and nothing before it.
-
-Read-only, deliberately. A tool that wrote to the log would be a second writer
-of a format the app owns, and getting that wrong corrupts a library rather than
-returning a bad answer.
-
-## Reading a library that is already here
-
-If this runs on the same machine as the app — the box that fetches and
-summarizes while nobody is looking — it does not need sync, keys, or a second
-plaintext copy of anything:
+### Config first (every variant needs it)
 
 ```sh
-./scripts/run.sh --library ~/.local/share/sk.dataiza.summareader/summareader.sqlite ui
+cp summareader-mcp.example.json summareader-mcp.local.json
+$EDITOR summareader-mcp.local.json
 ```
 
-The file is opened **read-only**; the app can be running against it at the same
-time. Every command and every MCP tool works the same way.
-
-## Running it headless, and reading it from a terminal
-
-The other direction: the library stays on the box that is allowed to hold it,
-and a terminal anywhere else reads it over that box's HTTP transport. **One
-host holds the plaintext, and every reader borrows it** rather than each one
-keeping a copy that has to be trusted, encrypted and cleaned up.
-
-**On the box.** Nothing listens until it is told to:
-
-```sh
-./scripts/run.sh serve --transport=http --host=0.0.0.0 --port=8100
-```
-
-Set `bearer_token` in the config before that address, not after. Anything
-wider than loopback publishes the entire library, in plaintext, to whatever
-can route to the port — `scripts/install.sh` refuses to install such a bind
-while the key is unset, and the server warns about it at startup. (The key was
-`http_token` until this week; configs written with that name are still read.)
-
-```sh
-openssl rand -base64 32
-```
-
-**Leaving it running.** `run.sh` is a foreground process that dies with the
-shell that started it, which is right for trying it and wrong for a box you
-then walk away from. [§4](#4-as-a-user-service) is the durable form:
-
-```sh
-HOST=0.0.0.0 PORT=8100 ./scripts/install.sh    # systemd user service
-./scripts/install.sh --docker                  # or a container, restarting with the machine
-```
-
-**From the other machine.** The token is the only credential a reader carries:
-
-```sh
-export SUMMAREADER_MCP_TOKEN=…                          # the mirror's bearer_token
-./scripts/run.sh --remote http://box:8100 status
-./scripts/run.sh --remote http://box:8100 search "borrow checker" --since 30d
-./scripts/run.sh --remote http://box:8100 recent --limit 10
-./scripts/run.sh --remote http://box:8100 report --since 7d --out week.md
-./scripts/run.sh --remote http://box:8100 ui
-```
-
-`--remote` needs no config file, no device token and no master key — it holds
-no library, so it decrypts nothing. `/mcp` is added to the address if you leave
-it off. This is also where a checkout stops being the convenient spelling: a
-laptop that only ever reads wants the package installed (`pip install .` into a
-virtualenv) or the frozen `dist/summareader-mcp`, and takes the same flags
-either way.
-
-`serve` and `pull` refuse under `--remote`, with a sentence rather than a
-key-length error:
-
-```
-summareader-mcp: --remote reads a mirror; it cannot be one. Drop --remote, or
-run this against the machine that holds the library.
-```
-
-Both need the master key, and a reader over a port has none by design. Reading
-only is the shape of the thing rather than a gap: `--remote` speaks the MCP
-tools, and the tools read.
-
-Which machine holds what, since that is the entire point of the arrangement:
-
-| | Holds |
-| --- | --- |
-| The box running `serve` | the master key, the device token, and the decrypted library in plaintext |
-| The terminal reading it | nothing — an address and a bearer token, both of which are revocable |
-
-The terminal interface is a client like any other under `--remote`: a separate
-process, talking to a server that is a separate process, over the same tools a
-model would use. It holds one MCP session open for as long as it runs rather
-than dialling per search — on a thread of its own, because Textual is already
-running an event loop and a second one cannot nest inside it.
-
-Not to be confused with `server` in the config file, which is the sync server
-this mirrors *from*. `--remote` is a mirror it reads.
-
-## Running it
-
-Six ways to start it, and what separates them is who is on the other end: a
-model, a person at a terminal, a shell, or nobody at all until a client
-connects. They are the same program over the same functions — the choice is
-about where it lives, not about what it can answer. The seventh,
-[§7](#7-the-desktop-console), is not one of them: it is a window that starts
-one of these for you.
-
-Configuration is three values, whichever way: the sync server, a device token,
-and the master key. Put them in a file rather than the environment — `docker
-inspect` prints an environment, and a file can be mounted read-only.
-
-```sh
-cp summareader-mcp.example.json summareader-mcp.local.json   # then fill it in
-```
-
-The device token comes from a paired device (`POST /enroll`) or from
-`summareader-sync first-device` for the first one, and is revocable. The master
-key is the value the pairing QR carries — **it is not revocable, and anything
-holding it can read everything.**
-
-**The short way to all three:** in the app, Settings → Sync → *Another device*,
-name it, *Make a code*, then **Copy MCP config**. That writes exactly this
-file's `server`, `token`, `master_key` and `name`, filled in. A pairing code is
-a QR with one-letter keys — `k` is the master key, `t` the new device's token —
-and matching those against these names by eye is a mistake nobody notices until
-the mirror refuses to start.
-
-None of this is needed to read a library that is already on the machine; see
-[above](#reading-a-library-that-is-already-here), which needs no server, no
-token and no key.
-
-### Every setting, and where it can be said
-
-Three values are all that is *required*; the rest of the file is what this
-mirror does once it has them. Every one of them can be said in the file or in
-the environment, and the two that `serve` also takes as flags resolve **flag,
-then environment, then file, then default** — so a config file cannot be
-overruled by a flag nobody typed, and a container can still override one field
-without a new file. `summareader_mcp/config.py` is the only place any of this
-is decided.
+Three values are required: `server`, `token`, `master_key`. In the app,
+Settings → Sync → Add another device → **Copy MCP config** writes all three
+plus `name`.
 
 | Key | Environment | What it is |
 | --- | --- | --- |
@@ -258,478 +50,219 @@ is decided.
 | `token` | `SUMMAREADER_DEVICE_TOKEN` | this device's token, revocable |
 | `master_key` | `SUMMAREADER_MASTER_KEY` | the library key, base64, **not** revocable |
 | `name` | `SUMMAREADER_MCP_NAME` | what the app's paired-devices list calls this |
-| `bearer_token` | `SUMMAREADER_MCP_TOKEN` | the credential the HTTP port demands. `http_token` is the old spelling and is still read |
-| `host` | `SUMMAREADER_MCP_HOST` | what `serve --transport=http` binds; also `--host`. Loopback by default |
-| `port` | `SUMMAREADER_MCP_PORT` | the port it binds; also `--port`. 8100 by default |
-| `poll_seconds` | `SUMMAREADER_MCP_POLL` | how often a mirror pulls. 300 by default |
-| `fetch_bodies` | `SUMMAREADER_MCP_BODIES` | download article text as well as summaries |
-| `library` | `SUMMAREADER_MCP_LIBRARY` | the file spelling of `--library`: read a library that is already here and do not sync. With it set, the three required values are not |
+| `bearer_token` | `SUMMAREADER_MCP_TOKEN` | the credential the HTTP port demands (`http_token` is the old spelling, still read) |
+| `host` | `SUMMAREADER_MCP_HOST` | what `serve --transport=http` binds. `127.0.0.1` by default |
+| `port` | `SUMMAREADER_MCP_PORT` | the port it binds. `8100` by default |
+| `poll_seconds` | `SUMMAREADER_MCP_POLL` | how often it pulls. `300` by default |
+| `fetch_bodies` | `SUMMAREADER_MCP_BODIES` | download article text as well as summaries. `true` by default |
+| `library` | `SUMMAREADER_MCP_LIBRARY` | read a library file that is already here, read-only, and do not sync. With it set, nothing above is required |
 | `cache_dir` | `SUMMAREADER_MCP_CACHE` | where `library.sqlite` lives |
-| — | `SUMMAREADER_MCP_CONFIG` | which file all of the above is read from |
+| — | `SUMMAREADER_MCP_CONFIG` | which file the above is read from |
 
-`ALLREADER_*` is accepted for every one of these: somebody's deployment
-predates the name.
+Defaults: `~/.config/summareader-mcp/` and `~/.cache/summareader-mcp/` on Linux
+(XDG honoured), `~/Library/Application Support/` and `~/Library/Caches/` on
+macOS, `%APPDATA%`/`%LOCALAPPDATA%` on Windows.
 
-Two things are deliberately *not* in the file. `--remote` reads a mirror
-somebody else is running and is the one mode with no configuration at all —
-putting it in a config file would mean a file describing a mirror that is not
-this machine's. And `--transport` is how the client on the other end talks to
-this process, decided by whatever spawned it: an MCP client spawns
-`summareader-mcp` with no arguments and expects stdio, and a file that could
-turn that into an HTTP server would break it silently.
-
-**`host` and `port` are here because the console writes them here.** An
-address chosen in a window that comes back the old one at the next login is not
-a choice — see [§7](#7-the-desktop-console).
-
-### How the command is spelled
-
-The same program answers to three names, and which one you have depends on how
-it arrived on the machine. A fresh checkout has none of them on `PATH`:
-
-| Spelling | Where it comes from |
-| --- | --- |
-| `./scripts/run.sh …` | a checkout, and nothing else — it runs `.venv/bin/summareader-mcp` and points the config and the cache at the copies beside the repository |
-| `summareader-mcp …` | installing the package. `./scripts/install.sh` builds its own virtualenv and symlinks the console script into `~/.local/bin`; `pip install .` into any virtualenv puts it on that environment's path |
-| `./dist/summareader-mcp …` | `./scripts/freeze.sh` — one file with no Python outside it, run by its path and never installed anywhere |
-
-Every example here is written as `./scripts/run.sh`, because that is the one
-spelling a reader of this file certainly has. The arguments after it are
-identical whichever name you type.
-
-Which way to run it, in one table — the columns are who is on the other end,
-and whether Python of the right version is on the machine:
-
-| You want | Native | Docker |
-|---|---|---|
-| A model, over stdio | `./scripts/run.sh` | — a container is not a subprocess |
-| A model, over a port | `./scripts/run.sh serve --transport=http` | `docker compose up -d` |
-| It back after a reboot | `./scripts/install.sh` | `./scripts/install.sh --docker` |
-| To read it yourself | `./scripts/run.sh ui` | `./scripts/run.sh ui` — on the host, against the same `./.cache` the container mounts |
-| To start and watch it from a window | `./scripts/run.sh gui` | — a container has no display; the console runs on the host |
-| To read a mirror on another box | `./scripts/run.sh --remote http://box:8100 …` | same — it is the port that answers |
-| No Python on the machine | `./scripts/freeze.sh`, then `./dist/summareader-mcp` | any of the above |
-
-The console ([§7](#7-the-desktop-console)) is for the machine that holds the
-library: it starts and stops the server there and searches what it holds. It is
-its own application, in `console/`, and no `./scripts/run.sh` subcommand starts
-it. Reading a mirror that lives on some other machine is the terminal
-interface's job over `--remote`, which needs no window and no display — so the
-two do not overlap and neither is a smaller version of the other.
-
-### 1. As an MCP server
+A bearer token, for anything wider than loopback:
 
 ```sh
-./scripts/run.sh                                   # stdio, and no port at all
-./scripts/run.sh serve --transport=http --port=8100
+openssl rand -base64 32
 ```
 
-**Stdio** is the default because it is what a local client expects: configured
-with a `command:`, it starts this process itself and talks down its standard
-input. Nothing listens, nothing is published, and there is no token to get
-wrong — the client and the server are the same process tree, so the operating
-system has already answered the question a token would be asking.
+### Headless bundle
 
-**HTTP** is for a client that cannot start the process: one on another machine,
-or one talking to a container or a service, neither of which is a subprocess of
-anything. Port 8100 unless `--port` says otherwise.
-
-The HTTP transport binds loopback unless `--host` says otherwise. That is the
-right default nearly everywhere and the wrong one inside a container, where
-loopback is reachable by nothing and the port is published by the runtime — so
-the container passes `--host=0.0.0.0` and a desktop does not, because there the
-same address is a firewall prompt nobody asked for.
-
-Set `bearer_token` in the config and callers must present it as a bearer token.
-(It was `http_token` before, and configs written with that name still work.)
-Without one the port is open to anyone who can reach it, and the server says so
-at startup — the encryption ends at this process, which is what it is for and
-why it needs a boundary of its own. `/health` never needs the token: it reports
-whether the process is up and nothing about what it holds, and a health check
-that needs a secret breaks the day the secret rotates.
-
-**Until now the token guarded `/metrics` and nothing else.** The MCP endpoint —
-every tool, the whole library — answered anyone who could reach the port, while
-this paragraph, the unit file and the installer all said the token was what made
-that port safe. It now guards the whole app, `/health` excepted. If you have
-been reaching your mirror over HTTP without sending a bearer token, that is the
-thing that will stop working, and it should have been stopping all along.
-
-### 2. The terminal interface
+No Python needed — one frozen executable, plus a wheel, a compose file and
+(Linux) an installer.
 
 ```sh
-./scripts/run.sh ui
+tar -xzf summareader-mcp-headless-linux-x64.tar.gz
+cd summareader-mcp-headless-linux-x64
+cp summareader-mcp.example.json summareader-mcp.local.json   # then fill it in
+./summareader-mcp status
 ```
 
-![The terminal interface: a query box, results, and the selected article beside them](docs/tui.svg)
-
-A query at the top, what matches under it, the article beside them, and `e` to
-write the current result set to a Markdown file where you started it. `u` and
-`s` narrow to unread and to summarized, `esc` goes back to the box, `q` leaves.
-
-It has one box rather than a flag for each filter, so it reads fields out of
-what is typed:
-
-```
-source: "Colion Noir" since:7d unread:yes
-title:rust before:2026-08-01
-```
-
-`source`, `title`, `since`, `until`, `read_since`, `read_until`, `unread` and
-`summarized`, with `feed`, `after`, `before` and `read` as aliases. Everything
-else stays words to search for, so a title with a colon in it costs a search
-rather than an error.
-
-There is a window too, [§7](#7-the-desktop-console), and it is not this: the
-console starts the server and searches, and stops at the list of results.
-Reading an article is what this interface is for.
-
-The picture above is the program rather than a drawing of it —
-`scripts/screenshot.py` seeds a small library through the real store and paints
-the real interface headlessly, and writes `docs/tui.svg`:
+As a systemd **user** service (Linux only — the installer ships in the Linux
+bundle):
 
 ```sh
-uv run python scripts/screenshot.py
+./install.sh                                  # 127.0.0.1:8100
+PORT=8300 ./install.sh                        # somewhere else
+HOST=0.0.0.0 PORT=8300 ./install.sh           # reachable from the LAN
+./install.sh --uninstall                      # reversed; keeps the config and cache
 ```
 
-An SVG rather than a PNG because it stays readable when GitHub scales it, and a
-script rather than a screenshot taken by hand because one nobody can reproduce
-goes stale without ever saying so.
+`BIN_DIR`, `CONFIG`, `CACHE_DIR`, `PORT`, `HOST` override where things go;
+defaults are `~/.local/bin`, `./summareader-mcp.local.json`,
+`~/.cache/summareader-mcp`, `8100`, `127.0.0.1`. **A `HOST` wider than loopback
+is refused while `bearer_token` is unset.** To keep it running while logged
+out: `sudo loginctl enable-linger "$USER"`.
 
-### 3. On the command line
+### Console bundle
 
-Everything the tools do, without a language model in the room — which is also
-how you check what the tools are answering.
+The desktop window, carrying its own copy of the mirror.
 
 ```sh
-./scripts/run.sh search "borrow checker" --since 30d
-./scripts/run.sh recent --limit 10
-./scripts/run.sh report --source "Hacker News" --since 7d --out week.md
-./scripts/run.sh status
-./scripts/run.sh pull              # sync once and say what arrived
+# Linux: summareader-mcp-console-linux-x64.tar.gz
+tar -xzf summareader-mcp-console-linux-x64.tar.gz
+./summareader-mcp-console/summareader_mcp_console
+
+# macOS: summareader-mcp-console-macos.zip — unzip and open the .app
 ```
 
-`search` takes the same filters as `search_library` as flags: `--title`,
-`--source`, `--unread`, `--summarized`, `--since`/`--until` for when an article
-was published and `--read-since`/`--read-until` for when it was read. `recent`
-is the newest of them, `report` writes a set of articles down as Markdown, CSV
-or JSON, and `status` says how much is here and how far the log has been read —
-the first thing to run when a query comes back empty.
-
-`--format json` on any of the reading commands, for something else to consume.
-
-`./scripts/run.sh` is the checkout spelling, against the config and cache
-beside the repository; after `./scripts/install.sh` the same commands are
-`summareader-mcp search rust` and the service's own cache.
-
-### 4. As a user service
+### Docker
 
 ```sh
-./scripts/install.sh              # its own venv, installed as a systemd user service
-./scripts/install.sh --docker     # or runs it as a container
-./scripts/install.sh --uninstall  # either one, reversed
-```
-
-The service uses the HTTP transport, because a service has no client on the
-other end of its standard input; a local MCP client that starts its own
-subprocess wants `scripts/run.sh` and no service at all. It is a *user*
-service, under `~/.config/systemd/user` — this process holds the master key and
-a plaintext copy of the library, so it belongs to one person and needs no root
-to install or remove. `scripts/summareader-mcp.service` is the definition the
-installer fills in.
-
-This is also what puts `summareader-mcp` on `PATH`: the installer builds a
-virtualenv of its own under `~/.cache/summareader-mcp/venv`, `pip install .`
-into it, and symlinks that environment's console script into `~/.local/bin`.
-Its own virtualenv because a service should not have its dependencies changed
-by something else on the machine, and the unit's `ExecStart` is that symlink
-rather than anything in this checkout — so the service keeps running whatever
-you do to `.venv` afterwards.
-
-The port and the address are the installer's, not the unit file's — edit the
-installed copy and the next install overwrites it:
-
-```sh
-PORT=8300 ./scripts/install.sh                     # somewhere else
-HOST=0.0.0.0 PORT=8300 ./scripts/install.sh        # reachable from the LAN
-```
-
-**The unit passes `--host=127.0.0.1` unless `HOST` says otherwise, where it
-used to bind every interface.** That is a deliberate break, and it is the kind
-that arrives looking like a bug: if you reach your mirror from another machine
-on your LAN, it will stop answering after the next install, and nothing will
-say why — `HOST=0.0.0.0` is how you say you meant it. The old default was
-bind-everything by accident rather than by choice, and a user service that
-serves an entire library in plaintext to the network, with the token optional,
-is not something anybody decided on purpose.
-
-The installer refuses to start without a config, and **refuses a `HOST` wider
-than loopback while `bearer_token` is unset** — that address serves the whole
-library in plaintext to anything that can route to it. On loopback the same
-missing token is a warning rather than a refusal. The Docker path installs no unit: `restart: unless-stopped` and
-an enabled `docker.service` already restart the container after a reboot.
-
-Running it as a service rather than a container changes what `server` in the
-config has to be: `http://sync:8099` is a Docker service name and resolves only
-on that network.
-
-### 5. In a container
-
-```sh
+cp summareader-mcp.example.json summareader-mcp.local.json   # then fill it in
 docker compose up -d
 curl http://127.0.0.1:8100/health
 ```
 
-HTTP rather than stdio, because a container is not a subprocess its client can
-start. `scripts/run.sh --docker` is the same image in the foreground, for
-trying it on a machine with no Python of the right version.
+HTTP on `127.0.0.1:8100`, config mounted read-only, cache in `./.cache` beside
+the compose file. The image sets its own `/config` and `/cache` paths and
+`--host=0.0.0.0`.
 
-The image sets `SUMMAREADER_MCP_CONFIG=/config/summareader-mcp.json` and
-`SUMMAREADER_MCP_CACHE=/cache` itself and passes `--host=0.0.0.0`, so the
-mounted paths and the published port work as compose reads them — compose
-passes neither, and the per-platform defaults are not container paths.
+A sync server in another container on the same host needs a shared network and
+its service name — `host.docker.internal` will not reach one bound to
+localhost. The compose file has the block to uncomment.
 
-If the sync server is another container on the same host, put both on one
-network and use its service name; `host.docker.internal` will not reach a sync
-server that is bound to localhost, which its own compose does on purpose. The
-compose file has the block to uncomment.
-
-### 6. As one executable
+### From source
 
 ```sh
-./scripts/freeze.sh          # dist/summareader-mcp, about 30 MB
+git clone … && cd summareader-mcp
+uv venv && uv pip install -e ".[dev]"
+cp summareader-mcp.example.json summareader-mcp.local.json   # then fill it in
+./scripts/run.sh status
+pytest                                        # the test suite
 ```
 
-PyInstaller, driven by `summareader-mcp.spec`. One file that needs no Python on
-the machine it runs on, which is what a desktop build has to be able to hand
-over, and which serves, searches and paints the terminal interface like any
-other way of starting it. **No window is in it:** the console is a Flutter
-application in `console/`, built separately, and `tkinter` is excluded again
-now that nothing left in this package draws anything — ten megabytes of shared
-libraries that would never open a display. The script builds it and then runs it — `--help`, a
-library created from `schema.sql`, and that same file read back through
-`--library` — because the interesting failure is not at start-up: `schema.sql`
-is a data file, and a bundle that lost it starts perfectly and fails when
-somebody opens a library.
-
-Built on the machine it is built for, one platform at a time. **Only the Linux
-executable has been produced so far**; the macOS and Windows builds have to run
-on macOS and Windows, and until somebody does that they are untested rather
-than merely unbuilt.
-
-### 7. The desktop console
+`./scripts/run.sh` runs `.venv/bin/summareader-mcp` against the config and
+cache beside the repository. Other spellings:
 
 ```sh
-./scripts/run.sh gui                        # the short way, from a checkout
-cd console && flutter run -d linux          # or: flutter build linux --release
+./scripts/install.sh            # systemd user service, own venv, `summareader-mcp` on PATH
+./scripts/install.sh --docker   # or a container that restarts with the machine
+./scripts/freeze.sh             # dist/summareader-mcp, one file, no Python needed
+./scripts/run.sh --docker       # the container in the foreground
 ```
 
-`run.sh gui` is a convenience and not a subcommand — the console is a separate
-program, and the `gui` subcommand that used to be part of this package is
-gone. It runs the release build when one exists and falls back to
-`flutter run` when it does not, and it hands the console the same
-`SUMMAREADER_MCP_CONFIG` and `SUMMAREADER_MCP_CACHE` the other `run.sh`
-commands use — so the window opens on the library `./scripts/run.sh status`
-describes, rather than on whatever is in the home directory. It also sets
-`SUMMAREADER_MCP_EXE` to the checkout's own `summareader-mcp`, which is how
-the console knows what to start.
+## Usage
 
-![The console: status, the counts, the buttons, the configuration panel and the search box](docs/console.png)
+`summareader-mcp` below is whichever spelling you have: the frozen binary, the
+installed command, or `./scripts/run.sh` from a checkout. The arguments are the
+same.
 
-For the machine that holds the library, and for the two jobs that were
-terminal-only with no good reason: keeping the server running, and asking what
-is in there.
+### MCP over stdio
 
-**It is not part of the Python package.** `console/` is a Flutter application
-of its own, built and shipped by `flutter build` and invisible to pip: the
-wheel is `packages = ["summareader_mcp"]`, the sdist excludes `console`, and
-`tkinter` is back in PyInstaller's `excludes`. Flutter 3.47, with `linux`,
-`macos` and `windows` scaffolding committed and only the Linux build actually
-run. It takes the flags the old `gui` subcommand took — `--config`,
-`--library`, `--remote`, `--host` and `--port`, the last two defaulting to
-whatever the config file says rather than to an address of their own — and no
-`./scripts/run.sh` subcommand starts it, because it is not that program.
+The default. The client starts the process and talks down its standard input —
+no port, no token.
 
-What it shows, and what each control does:
+```json
+{
+  "command": "/path/to/summareader-mcp",
+  "args": ["serve"],
+  "env": { "SUMMAREADER_MCP_CONFIG": "/path/to/summareader-mcp.local.json" }
+}
+```
 
-| | |
-|---|---|
-| **status line** | whether the server is answering, on which address, and whether systemd is the one running it |
-| **Library** | articles, unread, summarized, with text, sources and the cursor — read from the library file the search box has open anyway — then last pull and failures, which are not in the file because they live in the running process's memory, and are scraped from its `/metrics` with the configured `bearer_token`. `/health` is what "running" means |
-| **Start / Stop** | the server. With a user unit installed these drive `systemctl --user`; without one, Start runs a child process |
-| **Pull now** | one sync now rather than at the server's next timer — `summareader-mcp pull`, as a subprocess |
-| **Start at login** | writes `~/.config/systemd/user/summareader-mcp.service` and enables it; unticking removes it again. It re-reads from disk afterwards, so it cannot sit ticked beside a service that failed to install. Linux only — the row is absent elsewhere |
-| **Configuration** | the config file's path and what is in it, including whether a bearer token is set — "set", never the value. Read-only text, the master key and the bearer token most of all: a window that edits somebody's master key is a window that can lose it |
-| **Address** | which interface and port the server binds, chosen from what this machine actually answers on. The one thing the console *writes*: `host` and `port` go back into the config file, and into the unit as well when one is installed, because a unit and a config that disagree is worse than either. The console reads them at startup too, so it opens on the address it was last told to use. Everything else in the file comes back out exactly as it was written — comment keys, keys this version has never heard of, the master key untouched — through a temporary file and a rename, so an interrupted write cannot leave half a config behind. A file that will not parse is a refusal naming the error and the path, never an overwrite. A bind wider than loopback with no `bearer_token` is refused the same way whether it was chosen here or read out of the file |
-| **Search** | the library file directly, and the MCP tools under `--remote`. Date, source and title; there is no article pane, because that is [§2](#2-the-terminal-interface) |
+### MCP over HTTP
 
-**The server is a child process, not something embedded in the console.**
-`serve` blocks, holds the master key, and is the thing being restarted — and it
-is Python, which this is not, so it could hardly be anything else. It is
-started with exactly the argv the unit's `ExecStart` line holds: `serveArgv()`
-is the one spelling of "run the server", the unit is rendered from it, and
-`console/test/mirror_test.dart` asserts the two are the same string. A desktop
-path and a service path free to spell the same command differently drift until
-one of them is wrong at the next login, in a log nobody has open.
-
-**One owner at a time.** With a unit installed, systemd owns the server and the
-console is a remote control for it — Start and Stop drive `systemctl --user`,
-and the console never starts a child of its own. Two servers on one library
-both pull and both advance the same cursor, and the second one simply fails to
-bind the port, which from a window reads as "Start did nothing". For the same
-reason, closing the console stops a child it started and never a server systemd
-owns: outliving the console is the entire point of installing the unit.
-
-**"Start at login" writes and removes the unit itself** rather than calling
-`scripts/install.sh`. That script wants a repository, builds a virtualenv and
-runs `pip install .`; a shipped console has none of those and still deserves a
-server that comes back after a reboot.
-
-**It has to find the mirror**, which the Tk window never did — that one could
-start `sys.executable`, because it *was* the mirror. This one looks at
-`SUMMAREADER_MCP_EXE`, then a `summareader-mcp` sitting beside the console
-itself, which is how a bundle would ship the two together, and finally the bare
-name on `PATH`. Nothing packages them together yet, so from a checkout the
-spelling that works is `SUMMAREADER_MCP_EXE=./scripts/run.sh`.
-
-**Pull now is a subprocess**, `summareader-mcp pull`, rather than a sync run in
-this process the way the Python window ran it. Pulling means the master key,
-the envelope format and the whole protocol, and a third implementation of those
-— in Dart, in a console — is exactly what
-[the section above](#a-second-implementation-checked-against-the-first) is
-about. Every record applies by id and the library is in WAL, so a pull that
-overlaps the server's own timer costs a duplicate fetch and nothing worse.
-
-**Search is the match the command line makes.** The console reads the library
-with `package:sqlite3`, registering the same `word_start` function and running
-the same LIKE prefilter in front of it that `store.py` does — and
-`console/test/library_test.dart` runs `summareader-mcp search` over ten queries
-and compares the ids it gets back. A search box that answers a slightly
-different question than the command line is the failure this repository is
-otherwise entirely written around.
-
-Under `--remote` or `--library` the console says so in a sentence at the top
-and greys out Start, Stop and Pull — a reader over a port has no master key,
-and a library file the app owns is not this program's to sync. Search and the
-counts work in both, which is the half that is actually a reading job. It is
-the same refusal `cli.py` gives when `serve` is asked for over `--remote`, in
-the place a window can put it. There is a third: a config with no server, no
-token or no master key names the one that is missing, so a first launch says
-what to fill in instead of starting a server that exits a second later.
-
-**The look is the app's.** `console/packages/summareader_ui/` is a copy of the
-package SummaReader draws itself with, refreshed by `scripts/sync-ui.sh` (the
-sibling `../summareader` unless told otherwise), with a test that fails when
-the two have drifted and skips where there is no checkout to compare against. A
-copy rather than a `git:` dependency because reading that repository's metadata
-needs a credential the build machines do not have.
-
-The picture is the console rather than a drawing of it, and it is a test:
+For a client that cannot start the process: another machine, a container, a
+service.
 
 ```sh
-cd console && flutter test                    # fails when the picture is stale
-cd console && flutter test --update-goldens   # redraws docs/console.png
+summareader-mcp serve --transport=http --port=8100
+summareader-mcp serve --transport=http --host=0.0.0.0 --port=8100
 ```
 
-Flutter paints to a canvas with no display at all, from the same demo library
-`scripts/screenshot.py` seeds. The Tk picture needed `$DISPLAY`, a window
-manager willing to leave the window its own size, and a screen capture — so it
-was taken by hand once and went quietly out of date afterwards, which is the
-thing a picture in a README does worst.
+- The endpoint is `/mcp`; `/health` answers without a token; `/metrics` is
+  Prometheus text behind the same token as the tools.
+- With `bearer_token` set, callers must send `Authorization: Bearer …`.
+  Without one the port serves the whole library in plaintext to anything that
+  can reach it, and the server says so at startup.
+- Binds `127.0.0.1` unless `--host`, the environment or the config says
+  otherwise.
 
-### Where it keeps things
+### Command line
 
-With nothing said, the config file and the cache go where the platform puts
-them: `~/.config/summareader-mcp/` and `~/.cache/summareader-mcp/` on Linux
-(`XDG_CONFIG_HOME` and `XDG_CACHE_HOME` are honoured), `~/Library/Application
-Support/summareader-mcp/` and `~/Library/Caches/summareader-mcp/` on macOS, and
-`%APPDATA%`/`%LOCALAPPDATA%` on Windows.
+```sh
+summareader-mcp status                                   # what is here, and how far the log has been read
+summareader-mcp pull                                     # sync once and say what arrived
+summareader-mcp search "borrow checker" --since 30d
+summareader-mcp recent --limit 10
+summareader-mcp report --source "Hacker News" --since 7d --out week.md
+```
 
-`SUMMAREADER_MCP_CONFIG` and `SUMMAREADER_MCP_CACHE` override both and always
-win — which is how the container keeps `/config` and `/cache`, how the service
-unit points at one person's own directories, and how `scripts/run.sh` points at
-the copy beside this repository.
+`search` and `report` take `--title`, `--source`, `--since`/`--until`
+(published), `--read-since`/`--read-until` (read), `--unread`,
+`--summarized`, `--not-summarized`, `--limit`. Times are `3h`, `7d`, `3w` or
+`2026-08-01`. `--format` is `text`, `md`, `csv` or `json` (`report`: `md`,
+`csv`, `json`).
 
-### Starting fresh
+Two global flags, either of which replaces the config file:
 
-The cache is one file, `library.sqlite`, in the cache directory above. Nothing
-else has to be undone: delete it and the next run replays the log from zero.
+```sh
+# read the app's own library on this machine, read-only, without syncing
+summareader-mcp --library ~/.local/share/sk.dataiza.summareader/summareader.sqlite status
+
+# read a mirror somebody else is running — no keys, no library of its own
+export SUMMAREADER_MCP_TOKEN=…                  # that mirror's bearer_token
+summareader-mcp --remote http://box:8100 search "borrow checker" --since 30d
+```
+
+`serve` and `pull` refuse under `--remote`: both need the master key, and a
+reader over a port has none.
+
+Starting fresh — the cache is one file, safe to delete:
 
 ```sh
 systemctl --user stop summareader-mcp    # or: docker compose down
 rm ~/.cache/summareader-mcp/library.sqlite*
-./scripts/run.sh pull                    # rebuilds, then says what arrived
+summareader-mcp pull                     # replays the log from zero
 ```
 
-The `*` matters — WAL leaves `-wal` and `-shm` beside the database, and a
-stale pair against a new file is a corrupt read rather than a clean start.
-Stopping first is for the same reason: a running server holds the file open.
-
-The config file is *not* in the cache directory and is not touched by this,
-so the server, the token and the keys survive. Deleting the database also
-deletes the sync cursor it keeps, which is exactly what makes the next `pull`
-a full one rather than an incremental one.
-
-In a container the same file is `./.cache/library.sqlite` beside the compose
-file, deleted from the host.
-
-Under `--library` this does not apply and must not be done: that file is the
-app's own library, not a cache, and this program only ever reads it.
-
-## Testing it
+### Terminal interface
 
 ```sh
-uv venv && uv pip install -e ".[dev]"
-pytest
+summareader-mcp ui
+summareader-mcp --remote http://box:8100 ui
 ```
 
-A hundred and sixty-three tests: the protocol against the app's own vectors, the summary
-repair ladder against a corpus of real model failures, the store, the puller
-against a fake sync server, the command line, and the terminal interface driven
-headlessly.
+![The terminal interface: a query box, a results table of date, source and title, and the selected article beside it](docs/tui.svg)
 
-The console has a suite of its own, in Dart, because none of the above can see
-it:
+`esc` back to the query box, `e` exports the current results to Markdown, `u`
+unread only, `s` summarized only, `q` quits.
+
+One box rather than a flag per filter — it reads fields out of what you type:
+
+```
+source:"Colion Noir" since:7d unread:yes
+title:rust before:2026-08-01
+```
+
+`source`, `title`, `since`, `until`, `read_since`, `read_until`, `unread`,
+`summarized`, with `feed`, `after`, `before` and `read` as aliases. Everything
+else is words to search for.
+
+### Desktop console
+
+For the machine that holds the library: start and stop the server, watch it,
+and search.
 
 ```sh
-cd console && flutter test
+./summareader-mcp-console/summareader_mcp_console   # from the console bundle
+./scripts/run.sh gui                                # from a checkout
+cd console && flutter build linux --release         # or build it yourself
 ```
 
-It asserts the argv against the unit file, the teardown rule, the picture in
-`docs/`, and its search against `summareader-mcp search` over the same library.
+![The desktop console: status, library counts, server controls, bind address, the configuration panel and a search box](docs/console.png)
 
-What is *not* covered by them: a real sync server with real encrypted entries.
-The puller is tested against a fake that seals its entries with the same code
-this opens them with, so the two agree by construction — the vectors are what
-stop that being circular, because they were produced by the Dart implementation
-instead.
+It takes `--config`, `--library`, `--remote`, `--host` and `--port`. With a
+systemd user unit installed, Start and Stop drive `systemctl --user`; without
+one, Start runs a child process. It finds the mirror through
+`SUMMAREADER_MCP_EXE`, then a `summareader-mcp` beside itself, then `PATH`.
 
-The decrypted mirror is kept in the cache directory between runs, so a restart asks for
-what has arrived since rather than re-reading and re-decrypting the whole log.
-It is still only a cache: deleting the volume costs one re-read and no data,
-and anything unreadable in it — corrupt, half-written, or from a newer format
-— is treated as empty rather than as an error.
-
-## Metrics
-
-`GET /metrics` on the HTTP transport, in the Prometheus text format, behind the
-same bearer token as the tools. Not behind a second one: a scraper that can
-reach this port can already ask it for the articles themselves, so another
-credential would be ceremony rather than security.
-
-It reports the mirror rather than the library — items held, how many carry a
-summary, how far through the log the cursor is, how long since the last read
-and how many reads failed. Those are the numbers that answer *is the mirror
-keeping up*, which is the only operational question this process has: "up to
-date" and "stopped reading" look identical from an item count alone.
-
-`/health` still needs no token. It says whether the process is up and nothing
-about what it holds, and a health check that needs a secret stops working the
-day the secret rotates.
-
-Nothing in the output names an article. This is the one process that holds the
-library in plaintext, and a label carrying a title would put it somewhere
-nobody expects to find one — a test asserts it.
+Under `--remote` or `--library` the server controls are greyed out; search and
+the counts still work.
 
 ## Licence
 

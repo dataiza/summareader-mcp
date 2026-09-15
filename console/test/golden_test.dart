@@ -11,6 +11,7 @@
 ///
 /// The library underneath is the one scripts/screenshot.py describes, so the
 /// console's picture and the terminal interface's are of the same reading.
+@Tags(['golden'])
 library;
 
 import 'dart:io';
@@ -112,7 +113,10 @@ void main() {
       ]),
     );
 
-    tester.view.physicalSize = const Size(1060, 1460);
+    // Shorter than it was: the server, the address and the configuration are
+    // behind the menu now, and a picture of the window has nothing to show in
+    // the half of it they used to fill.
+    tester.view.physicalSize = const Size(1060, 860);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
