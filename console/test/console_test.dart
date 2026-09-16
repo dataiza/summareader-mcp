@@ -425,12 +425,33 @@ void _thisProgram() {
 
       expect(find.text('9.9.9 is available'), findsOneWidget);
       expect(find.text('Downloading… 42%'), findsOneWidget);
+      // Nothing to restart into until something is in place.
+      expect(find.text('Restart now'), findsNothing);
 
       await tester.ensureVisible(find.text('Download'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Download'), warnIfMissed: false);
       await tester.pumpAndSettle();
       expect(asked?.version, '9.9.9');
+    });
+
+    testWidgets('and once it is in place, a way into it', (tester) async {
+      await draw(
+        tester,
+        ConsoleState(
+          status: 'Not running',
+          running: false,
+          local: true,
+          stats: formatStats(const {'items': 3}, '7'),
+          configRows: const [('File', '/home/you/config.json')],
+          updatable: true,
+          updateSaid: '9.9.9 is in place — restart to use it.',
+          updateInstalled: '/home/you/Applications/X-9.9.9.AppImage',
+        ),
+      );
+      await openSettings(tester);
+
+      expect(find.text('Restart now'), findsOneWidget);
     });
 
     testWidgets('and anything else is offered none', (tester) async {

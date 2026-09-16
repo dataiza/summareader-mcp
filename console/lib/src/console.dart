@@ -38,6 +38,7 @@ class ConsoleState {
     this.busy = false,
     this.updateOffer,
     this.updateSaid,
+    this.updateInstalled,
     this.syncing = true,
     this.pollSeconds = 300,
     this.updatable = false,
@@ -66,6 +67,11 @@ class ConsoleState {
   /// A newer release, found and not yet accepted. Replacing the program
   /// somebody is running is not something to do because they pressed "check".
   final Release? updateOffer;
+
+  /// Where the new version is, once it is in place. The old one is still the
+  /// process on screen, so the honest end of an update is a button that
+  /// starts the new one.
+  final String? updateInstalled;
 
   /// What the check or the download is doing, or what it did. A line rather
   /// than a message that fades: a download is a minute long, and the sentence
@@ -118,6 +124,7 @@ class ConsoleView extends StatefulWidget {
     this.onCheckUpdates,
     this.onDownloadUpdate,
     this.onDismissUpdate,
+    this.onRestart,
     this.onBrowse,
   });
 
@@ -160,6 +167,9 @@ class ConsoleView extends StatefulWidget {
   /// Accept the offered release, and put the offer away again.
   final ValueChanged<Release>? onDownloadUpdate;
   final VoidCallback? onDismissUpdate;
+
+  /// Start the new version and leave. Only offered once there is one.
+  final VoidCallback? onRestart;
 
   /// Asked for by a press. Absent unless this is an AppImage — see
   /// [ConsoleState.updatable].
@@ -724,7 +734,17 @@ class _ConsoleViewState extends State<ConsoleView> {
         ),
       // What it is doing, or what it did.
       if (widget.state.updateSaid case final said?)
-        _row(said, const SizedBox.shrink()),
+        _row(
+          said,
+          widget.state.updateInstalled == null
+              ? const SizedBox.shrink()
+              : PillButton(
+                  label: 'Restart now',
+                  icon: Icons.restart_alt,
+                  height: 34,
+                  onTap: widget.onRestart,
+                ),
+        ),
     ]),
   );
 

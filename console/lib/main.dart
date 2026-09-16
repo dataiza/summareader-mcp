@@ -136,6 +136,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   /// saying what is happening to it.
   Release? _updateOffer;
   String? _updateSaid;
+  String? _updateInstalled;
   String _message = '';
 
   /// Whether the library row is editable: there is a config file to write it
@@ -465,6 +466,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         updatable: runningImage() != null,
         updateOffer: _updateOffer,
         updateSaid: _updateSaid,
+        updateInstalled: _updateInstalled,
       ),
       query: _query,
       onToggle: _toggle,
@@ -493,6 +495,14 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       onCheckUpdates: _checkUpdates,
       onDownloadUpdate: _downloadUpdate,
       onDismissUpdate: () => setState(() => _updateOffer = null),
+      onRestart: () async {
+        final image = _updateInstalled;
+        if (image == null) return;
+        final refusal = await restartInto(image);
+        // Only reached when it did not start: the other branch does not
+        // return.
+        if (refusal != null && mounted) setState(() => _updateSaid = refusal);
+      },
     );
   }
 

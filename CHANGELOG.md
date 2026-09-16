@@ -4,6 +4,15 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
+## 0.4.10
+
+### Restart now
+
+Beside the line that says the update is in place. The new version is on disk
+and the old one is the process on screen — which is exactly why replacing it
+was safe — so nothing changes until it is started again, and that was a
+sentence asking you to do it.
+
 ## 0.4.9
 
 ### An updated image renames itself to the version it holds
