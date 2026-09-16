@@ -4,6 +4,16 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
+## 0.4.9
+
+### An updated image renames itself to the version it holds
+
+A self-update writes the new program into the old path — that is what makes
+the swap atomic — so `SummaReaderMCP-0.4.8-x86_64.AppImage` went on saying
+0.4.8 while holding 0.4.9, and the launcher entry named that file. The file is
+renamed afterwards now, and the menu entry follows it. Nothing outside the
+name changes, and an entry naming another copy is left alone.
+
 ## 0.4.8
 
 ### Checking for an update no longer installs one
