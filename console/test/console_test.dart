@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:summareader_ui/summareader_ui.dart';
 import 'package:summareader_mcp_console/src/console.dart';
+import 'package:summareader_mcp_console/src/updates.dart';
 import 'package:summareader_mcp_console/src/version.dart';
 import 'package:summareader_mcp_console/src/library.dart';
 import 'package:summareader_mcp_console/src/mirror.dart';
@@ -28,6 +29,7 @@ Future<void> draw(
   ValueChanged<bool>? onSyncing,
   void Function(String path, {required bool existing})? onLibrary,
   VoidCallback? onGenerateToken,
+  ValueChanged<Release>? onDownloadUpdate,
 }) async {
   tester.view.physicalSize = const Size(1100, 1200);
   tester.view.devicePixelRatio = 1;
@@ -44,6 +46,7 @@ Future<void> draw(
         onLibrary: onLibrary,
         onPoll: onPoll,
         onSyncing: onSyncing,
+        onDownloadUpdate: onDownloadUpdate,
         onGenerateToken: onGenerateToken,
       ),
     ),
@@ -394,6 +397,40 @@ void _thisProgram() {
       // Its own version, so "which one am I running" is answerable in the
       // place where you would go to change it.
       expect(find.text(consoleVersion), findsWidgets);
+    });
+
+    testWidgets('a found release is offered, not installed', (tester) async {
+      // Replacing the program somebody is running is the one control on this
+      // page that changes this program, and it used to happen because they
+      // pressed "check".
+      Release? asked;
+      await draw(
+        tester,
+        ConsoleState(
+          status: 'Not running',
+          running: false,
+          local: true,
+          stats: formatStats(const {'items': 3}, '7'),
+          configRows: const [('File', '/home/you/config.json')],
+          updatable: true,
+          updateOffer: (
+            version: '9.9.9',
+            image: Uri.parse('https://example.invalid/x.AppImage'),
+          ),
+          updateSaid: 'Downloading… 42%',
+        ),
+        onDownloadUpdate: (release) => asked = release,
+      );
+      await openSettings(tester);
+
+      expect(find.text('9.9.9 is available'), findsOneWidget);
+      expect(find.text('Downloading… 42%'), findsOneWidget);
+
+      await tester.ensureVisible(find.text('Download'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Download'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(asked?.version, '9.9.9');
     });
 
     testWidgets('and anything else is offered none', (tester) async {

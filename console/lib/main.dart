@@ -131,6 +131,11 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   bool _managed = false;
   bool _atLogin = false;
   bool _busy = false;
+
+  /// A release found and not yet accepted, and the line under the version
+  /// saying what is happening to it.
+  Release? _updateOffer;
+  String? _updateSaid;
   String _message = '';
 
   /// Whether the library row is editable: there is a config file to write it
@@ -458,6 +463,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         syncing: _config.syncing,
         pollSeconds: _config.pollSeconds,
         updatable: runningImage() != null,
+        updateOffer: _updateOffer,
+        updateSaid: _updateSaid,
       ),
       query: _query,
       onToggle: _toggle,
@@ -484,6 +491,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       onSyncing: _config.fromAFile && _local ? _setSyncing : null,
       onGenerateToken: _config.fromAFile ? _generateToken : null,
       onCheckUpdates: _checkUpdates,
+      onDownloadUpdate: _downloadUpdate,
+      onDismissUpdate: () => setState(() => _updateOffer = null),
     );
   }
 
@@ -512,14 +521,63 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   /// Both halves report through [_act], so the toast says what is happening
   /// and what happened — a forty-megabyte download with no sign of life reads
   /// as a window that has hung.
-  Future<void> _checkUpdates() => _act('checking', () async {
-    final found = await const GitHubUpdates().newer();
-    if (found == null) return 'This is the newest release.';
+  /// Asks GitHub what the newest release is. Finding one does not install it.
+  ///
+  /// Replacing the program somebody is running is the one control here that
+  /// changes this program, and it used to happen because they pressed
+  /// "check". Now it is a sentence and two buttons.
+  Future<void> _checkUpdates() async {
+    setState(() {
+      _updateOffer = null;
+      _updateSaid = 'Checking for a newer release…';
+    });
+    await _act('checking', () async {
+      final found = await const GitHubUpdates().newer();
+      if (!mounted) return '';
+      setState(() {
+        _updateOffer = found;
+        _updateSaid = found == null ? 'This is the newest release.' : null;
+      });
+      return found == null
+          ? 'this is the newest release'
+          : 'found ${found.version}';
+    });
+  }
 
-    final refusal = await replaceRunningImage(found);
-    if (refusal != null) return refusal;
-    return 'Updated to ${found.version}. Restart to use it.';
-  });
+  /// Fetches the accepted release and puts it where this image is.
+  ///
+  /// The progress line is the point of doing it this way: forty megabytes over
+  /// a slow connection is a minute of a window that would otherwise look as
+  /// though it had stopped.
+  Future<void> _downloadUpdate(Release release) async {
+    setState(() {
+      _updateOffer = null;
+      _updateSaid = 'Downloading ${release.version}…';
+    });
+    // Redrawn on a whole percent rather than on every chunk: a setState per
+    // eight kilobytes is thousands of frames to move a number that has not
+    // changed.
+    var shown = -1;
+    await _act('downloading', () async {
+      final refusal = await replaceRunningImage(
+        release,
+        onProgress: (received, total) {
+          if (!mounted || total == null || total <= 0) return;
+          final percent = (received * 100 ~/ total).clamp(0, 100);
+          if (percent == shown) return;
+          shown = percent;
+          setState(() => _updateSaid = 'Downloading… $percent%');
+        },
+      );
+      if (mounted) {
+        setState(
+          () => _updateSaid =
+              refusal ?? '${release.version} is in place — restart to use it.',
+        );
+      }
+      return refusal ?? 'updated to ${release.version}';
+    });
+  }
 
   /// Puts the console in the applications menu, or takes it out.
   ///

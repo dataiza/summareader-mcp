@@ -4,6 +4,20 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
+## 0.4.8
+
+### Checking for an update no longer installs one
+
+Finding a newer release now says which version it found and waits: **Download**
+or **Cancel**. Replacing the program somebody is running is the one control on
+that page that changes this program, and it was happening because they pressed
+"check".
+
+The download says how far along it is, as a percentage under the version, and
+the line stays afterwards to say the new version starts next time. It is
+written beside the old image and swapped only at the end, so an interrupted
+download costs a stray file rather than a working program.
+
 ## 0.4.7
 
 ### Choosing the app's library was a one-way door

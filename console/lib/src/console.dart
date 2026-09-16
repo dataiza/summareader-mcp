@@ -14,6 +14,7 @@ import 'package:flutter/services.dart' show Clipboard;
 import 'package:summareader_ui/summareader_ui.dart';
 
 import 'addresses.dart';
+import 'updates.dart';
 import 'library.dart';
 import 'version.dart';
 
@@ -35,6 +36,8 @@ class ConsoleState {
     this.atLogin,
     this.message = '',
     this.busy = false,
+    this.updateOffer,
+    this.updateSaid,
     this.syncing = true,
     this.pollSeconds = 300,
     this.updatable = false,
@@ -59,6 +62,15 @@ class ConsoleState {
   /// Whether the mirror pulls on its own, and how often when it does.
   final bool syncing;
   final int pollSeconds;
+
+  /// A newer release, found and not yet accepted. Replacing the program
+  /// somebody is running is not something to do because they pressed "check".
+  final Release? updateOffer;
+
+  /// What the check or the download is doing, or what it did. A line rather
+  /// than a message that fades: a download is a minute long, and the sentence
+  /// about restarting is worth still being there afterwards.
+  final String? updateSaid;
 
   /// Whether this console can update and register itself — true only when it
   /// is running as an AppImage, which is the one form that is a single file it
@@ -104,6 +116,8 @@ class ConsoleView extends StatefulWidget {
     this.onSyncing,
     this.onGenerateToken,
     this.onCheckUpdates,
+    this.onDownloadUpdate,
+    this.onDismissUpdate,
     this.onBrowse,
   });
 
@@ -142,6 +156,10 @@ class ConsoleView extends StatefulWidget {
 
   /// Mint a bearer token and write it. Null where there is no config file.
   final VoidCallback? onGenerateToken;
+
+  /// Accept the offered release, and put the offer away again.
+  final ValueChanged<Release>? onDownloadUpdate;
+  final VoidCallback? onDismissUpdate;
 
   /// Asked for by a press. Absent unless this is an AppImage — see
   /// [ConsoleState.updatable].
@@ -679,6 +697,34 @@ class _ConsoleViewState extends State<ConsoleView> {
             'around a binary that stays put.',
       ),
       _updates(),
+      // Found, and waiting to be told to go ahead.
+      if (widget.state.updateOffer case final offer?)
+        _row(
+          '${offer.version} is available',
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              PillButton(
+                label: 'Download',
+                icon: Icons.download_outlined,
+                height: 34,
+                onTap: () => widget.onDownloadUpdate?.call(offer),
+              ),
+              const SizedBox(width: Ar.space2),
+              PillButton(
+                label: 'Cancel',
+                height: 34,
+                onTap: widget.onDismissUpdate,
+              ),
+            ],
+          ),
+          hint:
+              'Downloading replaces this AppImage where it sits. The copy you '
+              'have open keeps running; the new version starts next time.',
+        ),
+      // What it is doing, or what it did.
+      if (widget.state.updateSaid case final said?)
+        _row(said, const SizedBox.shrink()),
     ]),
   );
 
