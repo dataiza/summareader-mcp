@@ -43,7 +43,7 @@ jobs:
           fi
 
       # uv, because uv.lock is committed and is what the versions here mean.
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
 
