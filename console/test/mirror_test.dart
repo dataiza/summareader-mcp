@@ -7,6 +7,7 @@
 /// rather than by installing one and hoping.
 library;
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -151,6 +152,40 @@ void main() {
       supervisor.close();
     },
   );
+
+  group('what the mirror says', () {
+    test('a child that talks more than a pipe holds does not stop', () async {
+      // The bug this exists for: `Process.start` gives the child a pipe for
+      // stdout and another for stderr, and a pipe nobody reads fills at 64 KB
+      // — after which the child blocks *forever* on its next line. A mirror
+      // left running for a day stopped mid-write: no pulls, and an HTTP port
+      // still listening and never answering, the process asleep in
+      // `anon_pipe_write`. It was reported as "auto-sync does not work",
+      // which is exactly what it looked like from outside.
+      //
+      // The child here writes about 1.4 MB without pausing. Stop reading it
+      // and this test does not fail, it hangs — which is the failure the
+      // mirror was having.
+      final child = await Process.start('sh', [
+        '-c',
+        r'i=0; while [ $i -lt 20000 ]; do '
+            r'echo "line $i of a chatty server, padded well past 64 KB"; '
+            r'i=$((i+1)); done',
+      ]);
+
+      final lines = <String>[];
+      final reading = child.stdout
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .forEach(lines.add);
+
+      final code = await child.exitCode.timeout(const Duration(seconds: 30));
+      await reading;
+
+      expect(code, 0, reason: 'finished rather than blocking on a full pipe');
+      expect(lines.length, 20000);
+    });
+  });
 
   group('closing the console', () {
     test('a child started here dies here', () async {

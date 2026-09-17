@@ -4,6 +4,30 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
+## 0.4.11
+
+### The mirror stopped pulling after a day, and it was the window's fault
+
+A mirror started from the console ran for about a day and then did nothing:
+no pulls, and an HTTP port still listening that never answered. Reported as
+"auto-sync does not work", and everything about the configuration was right —
+`sync` on, `poll_seconds` at its default, the library matching the app's item
+for item up to the moment it stopped.
+
+`Process.start` gives a child a pipe for stdout and another for stderr, and
+**a pipe nobody reads fills up** — 64 KB on Linux — after which the child
+blocks for ever on its next log line. The console captured both and read
+neither. The mirror logs every pull, so it wrote its way into a wall: asleep
+in `anon_pipe_write`, holding a listening socket it could no longer answer.
+
+Both streams are read now, and the last 300 lines are kept rather than
+discarded — a mirror misbehaving is exactly when somebody wants them, and the
+reason this was invisible for a day is that nothing had them. The test writes
+1.4 MB from a child without pausing: stop reading it and the test hangs, which
+is the failure itself.
+
+**Restart the mirror once to escape it** — Stop, then Start, in the console.
+
 ## 0.4.10
 
 ### Restart now

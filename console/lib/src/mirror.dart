@@ -523,10 +523,52 @@ class Supervisor implements Owned {
       },
     );
     _child = child;
+
+    // **Read what it says, or it stops saying anything at all.**
+    //
+    // `Process.start` gives the child a pipe for stdout and another for
+    // stderr, and a pipe nobody reads fills up — 64 KB on Linux — after which
+    // the child blocks *forever* on its next log line. The mirror logs every
+    // pull, so a server left running for a day stopped mid-write: no pulls,
+    // and an HTTP port still listening and never answering, because the
+    // process behind it was asleep in `anon_pipe_write`. It looked exactly
+    // like "auto-sync does not work", which is how it was reported.
+    //
+    // Kept rather than discarded — the last few hundred lines are what
+    // somebody wants when a mirror is misbehaving, and the whole reason this
+    // was invisible is that nothing had them.
+    for (final stream in [child.stdout, child.stderr]) {
+      unawaited(
+        stream
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .forEach(_remember)
+            .catchError((Object _) {}),
+      );
+    }
+
     // A server that dies on its own — a port already held, a key it cannot
     // read — leaves nothing behind to notice it by, and Start would then
     // refuse to try again because it believes a child is still there.
     unawaited(child.exitCode.then((_) => _child = null));
+  }
+
+  /// The last few hundred lines the mirror wrote, newest last.
+  ///
+  /// A ring, because this is a long-running process and an unbounded list of
+  /// its log lines is the same unbounded growth the pipe was, moved into the
+  /// window.
+  final _said = <String>[];
+
+  static const _keepLines = 300;
+
+  List<String> get recentOutput => List.unmodifiable(_said);
+
+  void _remember(String line) {
+    _said.add(line);
+    if (_said.length > _keepLines) {
+      _said.removeRange(0, _said.length - _keepLines);
+    }
   }
 
   @override
