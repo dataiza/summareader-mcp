@@ -14,7 +14,7 @@ jobs:
     env:
       APP_TOKEN: ${{ secrets.APP_REPO_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The sibling checkout is what makes the protocol-vector test do
       # anything. Without it that test skips — and it is the one guarding
@@ -26,7 +26,7 @@ jobs:
         id: app
         if: ${{ env.APP_TOKEN != '' }}
         continue-on-error: true
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: dataiza/summareader
           path: .sibling/summareader
@@ -43,7 +43,7 @@ jobs:
           fi
 
       # uv, because uv.lock is committed and is what the versions here mean.
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v10
         with:
           enable-cache: true
 
@@ -58,7 +58,7 @@ jobs:
     env:
       APP_TOKEN: ${{ secrets.APP_REPO_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Same bargain as above, for the drift check. It compares this repo's
       # vendored copy of the app's design package against the original, and
@@ -68,7 +68,7 @@ jobs:
         id: app
         if: ${{ env.APP_TOKEN != '' }}
         continue-on-error: true
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: dataiza/summareader
           path: .sibling/summareader
