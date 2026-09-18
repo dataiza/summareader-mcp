@@ -113,11 +113,15 @@ void main() {
       onSyncing: (_) {},
       onGenerateToken: () {},
     );
-    await openSettings(tester, 'The server');
+    // Two pages now: how often it asks sits with who it asks, and the token
+    // stays with the address it guards.
+    await openSettings(tester, 'Sync');
 
     expect(find.text('Sync automatically'), findsWidgets);
     expect(find.text('Sync every'), findsOneWidget);
     expect(find.text('900'), findsOneWidget);
+
+    await goToPage(tester, 'The server');
     expect(find.text('Generate'), findsOneWidget);
     // Beside the button, so pressing it changes the page it was pressed on:
     // the toast that says a new one was written is gone six seconds later.
@@ -156,7 +160,7 @@ void main() {
       onPoll: (_) {},
       onSyncing: (_) {},
     );
-    await openSettings(tester, 'The server');
+    await openSettings(tester, 'Sync');
 
     expect(find.text('Sync automatically'), findsWidgets);
     expect(find.text('Sync every'), findsNothing);
@@ -169,10 +173,16 @@ void main() {
     // a switch and an interval would both be controls over nothing — and the
     // section says whose library it is instead.
     await draw(tester, withAFile(ownsLibrary: false));
-    await openSettings(tester, 'The server');
+    await openSettings(tester, 'Sync');
 
     expect(find.text('Sync automatically'), findsNothing);
     expect(find.text('Sync every'), findsNothing);
+
+    // The reason is on the server's page, which is where the arrangement it
+    // describes is set. The controls it explains the absence of are here, so
+    // this is the one place the move left a sentence away from its subject —
+    // see the note on the card.
+    await goToPage(tester, 'The server');
     expect(find.textContaining('owns this library'), findsOneWidget);
   });
 
@@ -181,9 +191,10 @@ void main() {
     // arrangement, and a control that writes into a file nobody named would
     // act on something nobody chose.
     await draw(tester, reading(null, local: true));
-    await openSettings(tester, 'The server');
-
+    await openSettings(tester, 'Sync');
     expect(find.text('Sync every'), findsNothing);
+
+    await goToPage(tester, 'The server');
     expect(find.text('Generate'), findsNothing);
   });
   testWidgets('the window opens on the library and the search box', (
@@ -221,12 +232,15 @@ void main() {
     }
     expect(find.text('This program'), findsNothing);
 
-    // The server's page: where it listens. Start and Sync now are not here —
-    // they are what the window is opened to do, so they live on the page it
-    // opens on and this asserts the absence as well as the presence.
+    // The server's page: where it listens, and whether it comes back on its
+    // own. Start and Sync now are what the window is opened to do, so they
+    // live on the page it opens on — asserted absent as well as present,
+    // because a control in two places is how two pages start disagreeing.
     expect(find.text('Address'), findsOneWidget);
     expect(find.text('Start'), findsNothing, reason: 'on the main page now');
     expect(find.text('Sync now'), findsNothing, reason: 'on the main page now');
+    expect(find.text('Sync automatically'), findsNothing,
+        reason: 'on the Sync page, with the server it asks');
 
     await goToPage(tester, 'Library');
     expect(find.text('Where the data lives'), findsOneWidget);
@@ -236,7 +250,7 @@ void main() {
     expect(find.text('Address'), findsNothing, reason: 'that is another page');
 
     await goToPage(tester, 'Sync');
-    expect(find.text('From the config file'), findsOneWidget);
+    expect(find.text('Sync'), findsWidgets);
 
     // And the library itself is off this screen entirely.
     expect(find.text('Search'), findsNothing);
