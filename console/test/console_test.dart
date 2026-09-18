@@ -221,10 +221,12 @@ void main() {
     }
     expect(find.text('This program'), findsNothing);
 
-    // The server's page: what it runs and where it listens.
-    expect(find.text('Start'), findsOneWidget);
-    expect(find.text('Sync now'), findsOneWidget);
+    // The server's page: where it listens. Start and Sync now are not here —
+    // they are what the window is opened to do, so they live on the page it
+    // opens on and this asserts the absence as well as the presence.
     expect(find.text('Address'), findsOneWidget);
+    expect(find.text('Start'), findsNothing, reason: 'on the main page now');
+    expect(find.text('Sync now'), findsNothing, reason: 'on the main page now');
 
     await goToPage(tester, 'Library');
     expect(find.text('Where the data lives'), findsOneWidget);
@@ -255,10 +257,11 @@ void main() {
     // is about: a mirror that will not pull is the answer to "why has nothing
     // arrived", which is asked of the library, not of the settings.
     expect(find.textContaining('Start, Stop and Pull'), findsOneWidget);
-    await openSettings(tester);
 
-    // Not merely dim: pressing it has to do nothing. A disabled-looking button
-    // that still starts a server is the worse half of this bug.
+    // On the first screen, beside the sentence that explains it — the buttons
+    // moved there and the refusal was always here. Not merely dim: pressing it
+    // has to do nothing. A disabled-looking button that still starts a server
+    // is the worse half of this bug.
     await tester.tap(find.text('Start'));
     await tester.pump();
     expect(started, isFalse);
