@@ -514,47 +514,14 @@ class _ConsoleViewState extends State<ConsoleView> {
   Widget _server() => _section(
     'The server',
     widget.state.local
-        ? 'The mirror runs as its own process, started with exactly the '
-              'command the systemd unit holds.'
+        ? 'Whether it comes back on its own, and where it listens. Starting '
+              'and stopping it is on the first screen.'
         : widget.state.ownsLibrary
         ? 'Somewhere else — this console is reading, not running anything.'
         : 'The app on this machine owns this library and fills it. A mirror '
               'reading one opens it read-only and never pulls, so there is '
               'nothing here to start or to schedule.',
     _card([
-      if (widget.onSyncing != null)
-        _row(
-          'Sync automatically',
-          ArSwitch(
-            label: 'Sync automatically',
-            value: widget.state.syncing,
-            onChanged: widget.state.busy ? null : widget.onSyncing,
-          ),
-          hint:
-              'Off is a mirror that holds what it already has and asks for '
-              'nothing. Sync now still works, and so does the command line.',
-        ),
-      if (widget.onPoll != null && widget.state.syncing)
-        _row(
-          'Sync every',
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 110,
-                child: _NumberField(
-                  value: '${widget.state.pollSeconds}',
-                  onSubmitted: widget.onPoll,
-                ),
-              ),
-              const SizedBox(width: Ar.space2),
-              Text('seconds', style: Ar.bodyStyle(13, color: Ar.dim(0.75))),
-            ],
-          ),
-          hint:
-              'What the mirror does on its own between presses of Sync now. '
-              'Takes effect the next time it starts.',
-        ),
       if (widget.state.atLogin case final at?)
         _row(
           'Start at login',
@@ -759,11 +726,44 @@ class _ConsoleViewState extends State<ConsoleView> {
   /// so these are shown and never written from here. The file itself is named
   /// in the first row, which is where to go and change them.
   Widget _fromTheConfigFile() => _section(
-    'From the config file',
-    'Read here, edited there — except pairing, which writes the server, the '
-        'token and the key together in one go. The master key is never shown '
-        'at all.',
+    'Sync',
+    'How often this asks, and who it asks. The server, the token and the key '
+        'are read here and written by pairing, which writes all three in one '
+        'go; the master key is never shown at all.',
     _card([
+      if (widget.onSyncing != null)
+        _row(
+          'Sync automatically',
+          ArSwitch(
+            label: 'Sync automatically',
+            value: widget.state.syncing,
+            onChanged: widget.state.busy ? null : widget.onSyncing,
+          ),
+          hint:
+              'Off is a mirror that holds what it already has and asks for '
+              'nothing. Sync now still works, and so does the command line.',
+        ),
+      if (widget.onPoll != null && widget.state.syncing)
+        _row(
+          'Sync every',
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 110,
+                child: _NumberField(
+                  value: '${widget.state.pollSeconds}',
+                  onSubmitted: widget.onPoll,
+                ),
+              ),
+              const SizedBox(width: Ar.space2),
+              Text('seconds', style: Ar.bodyStyle(13, color: Ar.dim(0.75))),
+            ],
+          ),
+          hint:
+              'What the mirror does on its own between presses of Sync now. '
+              'Takes effect the next time it starts.',
+        ),
       for (final (label, value) in widget.state.configRows)
         _row(
           label,
