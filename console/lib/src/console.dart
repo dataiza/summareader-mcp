@@ -179,12 +179,29 @@ class ConsoleView extends StatefulWidget {
   State<ConsoleView> createState() => _ConsoleViewState();
 }
 
+/// The pages Configuration is divided into.
+///
+/// It was one column of five sections, which on a small window is a scroll
+/// with the thing you came for somewhere in the middle of it. One subject per
+/// page, named, the way the app spells the same idea.
+enum ConfigPage {
+  server('The server'),
+  library('Library'),
+  sync('Sync'),
+  program('This program');
+
+  const ConfigPage(this.title);
+  final String title;
+}
+
 class _ConsoleViewState extends State<ConsoleView> {
   /// Which of the two screens is on. A field rather than a route, because
   /// the state above rebuilds this window every two seconds: a pushed route
   /// would keep the console it was pushed with, and Settings would sit there
   /// with a Start button that never became Stop.
   bool _settings = false;
+
+  ConfigPage _page = ConfigPage.server;
 
   @override
   Widget build(BuildContext context) => _screen(
@@ -195,12 +212,24 @@ class _ConsoleViewState extends State<ConsoleView> {
               const SizedBox(height: Ar.space4),
               _note(note),
             ],
-            const SizedBox(height: Ar.space6),
-            _server(),
-            if (widget.state.local) _address(),
-            _whereTheDataLives(),
-            _fromTheConfigFile(),
-            if (widget.state.updatable) _thisProgram(),
+            const SizedBox(height: Ar.space4),
+            _pages(),
+            const SizedBox(height: Ar.space4),
+            // A page that stopped existing — "This program" on a tarball —
+            // must not leave the window blank.
+            ...switch (_page == ConfigPage.program && !widget.state.updatable
+                ? ConfigPage.server
+                : _page) {
+              ConfigPage.server => [
+                _server(),
+                if (widget.state.local) _address(),
+              ],
+              ConfigPage.library => [_whereTheDataLives()],
+              ConfigPage.sync => [_fromTheConfigFile()],
+              ConfigPage.program => [
+                if (widget.state.updatable) _thisProgram(),
+              ],
+            },
           ]
         : [
             _header(),
@@ -212,6 +241,25 @@ class _ConsoleViewState extends State<ConsoleView> {
             _library(),
             _search(context),
           ],
+  );
+
+  /// The page chooser: one pill per subject, the way the header spells
+  /// Configuration itself.
+  Widget _pages() => Wrap(
+    spacing: Ar.space2,
+    runSpacing: Ar.space2,
+    children: [
+      // Only the pages that have something on them: a tarball has no image to
+      // replace, so "This program" would open on an explanation of why it is
+      // empty, which is worse than not being offered.
+      for (final page in ConfigPage.values)
+        if (page != ConfigPage.program || widget.state.updatable)
+          Segment(
+            label: page.title,
+            selected: _page == page,
+            onTap: () => setState(() => _page = page),
+          ),
+    ],
   );
 
   /// The sections, whichever screen they belong to.
@@ -695,17 +743,6 @@ class _ConsoleViewState extends State<ConsoleView> {
     'An AppImage is one file you downloaded, with no package manager behind '
         'it, so keeping itself current is something it has to do for itself.',
     _card([
-      _row(
-        'Without this window',
-        Text('install.sh', style: Ar.bodyStyle(13, color: Ar.dim(0.75))),
-        hint:
-            'An AppImage carries the mirror inside itself, at a path that '
-            'exists only while this window is open — so it cannot be a '
-            'service, and Start at login is not offered here. Keeping the '
-            'mirror running after a reboot is the headless install: '
-            'scripts/install.sh from the release, which writes the unit '
-            'around a binary that stays put.',
-      ),
       _updates(),
       // Found, and waiting to be told to go ahead.
       if (widget.state.updateOffer case final offer?)
@@ -920,13 +957,21 @@ class _ConsoleViewState extends State<ConsoleView> {
 
   // ---- the shapes the app's own settings pane is made of ---------------
 
+  /// A section, with its own heading unless the page is already called that.
+  ///
+  /// Configuration is pages now, and a page called "Library" holding a
+  /// section called "Library" says it twice — which also made "is this
+  /// control on screen" ambiguous to anything reading the window, tests
+  /// included.
   Widget _section(String title, String blurb, Widget child) => Padding(
     padding: const EdgeInsets.only(bottom: 30),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: Ar.headingStyle(19, forText: title)),
-        const SizedBox(height: 4),
+        if (!_settings || title != _page.title) ...[
+          Text(title, style: Ar.headingStyle(19, forText: title)),
+          const SizedBox(height: 4),
+        ],
         Text(blurb, style: Ar.bodyStyle(13.5, color: Ar.dim(0.6))),
         const SizedBox(height: 14),
         child,

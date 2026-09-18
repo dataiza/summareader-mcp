@@ -64,11 +64,26 @@ ConsoleState reading(String? note, {bool local = false}) => ConsoleState(
 
 /// Walks the top menu to the settings, which is where everything but the
 /// library and the search box now lives.
-Future<void> openSettings(WidgetTester tester) async {
+/// Walks to Configuration and, since 0.4.12, to one of its pages.
+///
+/// It was one column of sections; naming the page a test is about is the cost
+/// of that, and it makes the test say where the control lives.
+/// Switches pages inside Configuration, which must already be open — the
+/// pill in the header is a toggle, so pressing it again leaves.
+Future<void> goToPage(WidgetTester tester, String page) async {
+  await tester.tap(find.text(page));
+  await tester.pumpAndSettle();
+}
+
+Future<void> openSettings(WidgetTester tester, [String? page]) async {
   // One press. It was two — a menu bar holding one submenu called "Console",
   // with everything but the library behind that word.
   await tester.tap(find.text('Configuration'));
   await tester.pumpAndSettle();
+  if (page != null) {
+    await tester.tap(find.text(page));
+    await tester.pumpAndSettle();
+  }
 }
 
 void main() {
@@ -96,7 +111,7 @@ void main() {
       onSyncing: (_) {},
       onGenerateToken: () {},
     );
-    await openSettings(tester);
+    await openSettings(tester, 'The server');
 
     expect(find.text('Sync automatically'), findsWidgets);
     expect(find.text('Sync every'), findsOneWidget);
@@ -115,7 +130,7 @@ void main() {
       onPoll: (_) {},
       onSyncing: (_) {},
     );
-    await openSettings(tester);
+    await openSettings(tester, 'The server');
 
     expect(find.text('Sync automatically'), findsWidgets);
     expect(find.text('Sync every'), findsNothing);
@@ -128,7 +143,7 @@ void main() {
     // a switch and an interval would both be controls over nothing — and the
     // section says whose library it is instead.
     await draw(tester, withAFile(ownsLibrary: false));
-    await openSettings(tester);
+    await openSettings(tester, 'The server');
 
     expect(find.text('Sync automatically'), findsNothing);
     expect(find.text('Sync every'), findsNothing);
@@ -140,7 +155,7 @@ void main() {
     // arrangement, and a control that writes into a file nobody named would
     // act on something nobody chose.
     await draw(tester, reading(null, local: true));
-    await openSettings(tester);
+    await openSettings(tester, 'The server');
 
     expect(find.text('Sync every'), findsNothing);
     expect(find.text('Generate'), findsNothing);
@@ -164,28 +179,39 @@ void main() {
     expect(find.text('Configuration'), findsOneWidget);
   });
 
-  testWidgets('one press reaches everything that moved', (tester) async {
+  testWidgets('Configuration is pages, and each holds its own subject', (
+    tester,
+  ) async {
+    // It was one column of five sections, which on a small window is a scroll
+    // with the thing you came for somewhere in the middle. The page names are
+    // the chooser, so this also asserts that nothing was lost on the way.
     await draw(tester, reading(null, local: true));
     await openSettings(tester);
 
-    expect(find.text('The server'), findsOneWidget);
-    expect(find.text('Address'), findsOneWidget);
-    // Two sections where there was one called "Configuration" — which is the
-    // name of the page now, and a section inside a page of the same name
-    // reads as a mistake.
-    expect(find.text('Where the data lives'), findsOneWidget);
-    expect(find.text('From the config file'), findsOneWidget);
+    // "This program" is offered only to an AppImage — see the group below —
+    // and this state is not one, so three pages rather than four.
+    for (final page in ['The server', 'Library', 'Sync']) {
+      expect(find.text(page), findsWidgets, reason: page);
+    }
+    expect(find.text('This program'), findsNothing);
+
+    // The server's page: what it runs and where it listens.
     expect(find.text('Start'), findsOneWidget);
     expect(find.text('Sync now'), findsOneWidget);
+    expect(find.text('Address'), findsOneWidget);
+
+    await goToPage(tester, 'Library');
+    expect(find.text('Where the data lives'), findsOneWidget);
     // The library path is edited here, not read: it is the one line of the
     // configuration this window writes.
     expect(find.text('Its own copy'), findsOneWidget);
-    expect(find.text('/home/you/config.json'), findsOneWidget);
+    expect(find.text('Address'), findsNothing, reason: 'that is another page');
 
-    // And back again, or the settings are a one-way door.
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
-    expect(find.text('Search'), findsWidgets);
+    await goToPage(tester, 'Sync');
+    expect(find.text('From the config file'), findsOneWidget);
+
+    // And the library itself is off this screen entirely.
+    expect(find.text('Search'), findsNothing);
   });
 
   testWidgets('a mirror it does not hold is greyed out with a reason', (
@@ -258,7 +284,7 @@ void main() {
       findsOneWidget,
     );
 
-    await openSettings(tester);
+    await openSettings(tester, 'Sync');
     // The token is described, never printed. A window that shows a credential
     // is a window somebody screenshots.
     expect(find.text('set'), findsOneWidget);
@@ -269,7 +295,7 @@ void main() {
   ) async {
     String? paired;
     await draw(tester, reading(null, local: true), onPair: (t) => paired = t);
-    await openSettings(tester);
+    await openSettings(tester, 'Sync');
 
     // Twice over, as Search is: the row's label, and the button beside it.
     expect(find.text('Pair'), findsNWidgets(2));
@@ -290,7 +316,7 @@ void main() {
     // `--remote` and `--library` name no config file, and a console reading
     // somebody else's mirror has no business being handed a master key.
     await draw(tester, reading(null, local: true));
-    await openSettings(tester);
+    await openSettings(tester, 'Sync');
     expect(find.text('Pair'), findsNothing);
   });
 
@@ -306,7 +332,7 @@ void main() {
       ),
       onPair: (_) {},
     );
-    await openSettings(tester);
+    await openSettings(tester, 'Sync');
 
     expect(find.text('set'), findsOneWidget);
     expect(find.textContaining('AAAA'), findsNothing);
@@ -319,7 +345,7 @@ void main() {
       reading(null, local: true),
       onBrowse: ({required existing}) => asked = existing,
     );
-    await openSettings(tester);
+    await openSettings(tester, 'Library');
 
     await tester.tap(find.text('Browse…'));
     await tester.pump();
@@ -348,7 +374,7 @@ void main() {
       ),
       onLibrary: (path, {required existing}) => chosen = (path, existing),
     );
-    await openSettings(tester);
+    await openSettings(tester, 'Library');
 
     await tester.tap(find.text('Its own copy'));
     await tester.pump();
@@ -371,7 +397,7 @@ void main() {
         configRows: const [('File', '/home/you/config.json')],
       ),
     );
-    await openSettings(tester);
+    await openSettings(tester, 'Library');
 
     expect(find.textContaining('Opened read-only'), findsOneWidget);
   });
@@ -390,7 +416,7 @@ void _thisProgram() {
 
     testWidgets('an AppImage is offered the update control', (tester) async {
       await draw(tester, asAnImage());
-      await openSettings(tester);
+      await openSettings(tester, 'This program');
 
       expect(find.text('This program'), findsOneWidget);
       expect(find.text('Check for updates'), findsOneWidget);
@@ -421,7 +447,7 @@ void _thisProgram() {
         ),
         onDownloadUpdate: (release) => asked = release,
       );
-      await openSettings(tester);
+      await openSettings(tester, 'This program');
 
       expect(find.text('9.9.9 is available'), findsOneWidget);
       expect(find.text('Downloading… 42%'), findsOneWidget);
@@ -449,14 +475,16 @@ void _thisProgram() {
           updateInstalled: '/home/you/Applications/X-9.9.9.AppImage',
         ),
       );
-      await openSettings(tester);
+      await openSettings(tester, 'This program');
 
       expect(find.text('Restart now'), findsOneWidget);
     });
 
     testWidgets('and anything else is offered none', (tester) async {
       // A tarball, or `flutter run`. There is no single file to replace, so a
-      // button offering to replace one would act on something nobody chose.
+      // button offering to replace one would act on something nobody chose —
+      // and since Configuration is pages, the page itself is not offered
+      // either, rather than opening on an explanation of why it is empty.
       await draw(tester, reading(null, local: true));
       await openSettings(tester);
 

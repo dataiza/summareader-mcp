@@ -4,6 +4,22 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
+## 0.4.12
+
+### Configuration is pages
+
+It was one column of five sections, which on a small window is a scroll with
+the thing you came for somewhere in the middle of it. One subject per page —
+**The server**, **Library**, **Sync**, **This program** — chosen by name, the
+way the app spells the same idea.
+
+A page with nothing on it is not offered: a tarball has no image to replace,
+so **This program** is simply absent rather than opening on an explanation.
+And a section no longer repeats the name of the page it is on.
+
+**Without this window** is gone. It said where a service comes from on a build
+that cannot install one, which is a sentence about something else.
+
 ## 0.4.11
 
 ### The mirror stopped pulling after a day, and it was the window's fault
