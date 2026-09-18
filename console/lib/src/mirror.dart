@@ -340,7 +340,7 @@ List<(String, String)> formatStats(
 /// nothing, and the reader is left wondering what they broke.
 String? refusal({String? remote, String? library, String? incomplete}) {
   if (remote != null && remote.isNotEmpty) {
-    return 'Reading the mirror at $remote. Search and the counts are its '
+    return 'Reading the MCP server at $remote. Search and the counts are its '
         'answers; Start, Stop and Pull belong to the machine that holds the '
         'library, so they are off here.';
   }
@@ -351,7 +351,7 @@ String? refusal({String? remote, String? library, String? incomplete}) {
   }
   if (incomplete != null && incomplete.isNotEmpty) {
     return 'Not configured yet: $incomplete. Until that is filled in there is '
-        'no mirror to start and nothing to pull from — the counts below are '
+        'no server to start and nothing to pull from — the counts below are '
         'whatever the library on this machine already holds.';
   }
   return null;
@@ -381,7 +381,7 @@ String? autostartRefusal({
     if (token == null || token.isEmpty) 'no bearer token',
   ];
   if (absent.isEmpty) return null;
-  return 'Not starting the mirror on its own: ${absent.join(', ')} in '
+  return 'Not starting the server on its own: ${absent.join(', ')} in '
       '${configFile ?? 'the config file'}. The Bearer token row generates one, '
       'and an address that is filled in is one this window can start by hand. '
       'Nothing has been started.';

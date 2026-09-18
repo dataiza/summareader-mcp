@@ -443,7 +443,7 @@ class Pairing {
         // The MCP config the app copies carries `name` already, set to the
         // label typed when the code was made. A raw pairing payload carries
         // no such thing, so it falls back.
-        'name': _pasted(field(['name'])) ?? 'MCP mirror',
+        'name': _pasted(field(['name'])) ?? 'MCP server',
       },
     );
   }

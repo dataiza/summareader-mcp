@@ -555,7 +555,7 @@ void _thisProgram() {
       await openSettings(tester, 'This program');
 
       expect(find.text('Check for updates'), findsNothing);
-      expect(find.text('Start the mirror when this opens'), findsWidgets);
+      expect(find.text('Start the server when this opens'), findsWidgets);
 
       await tester.tap(find.byType(ArSwitch));
       await tester.pumpAndSettle();
@@ -712,7 +712,7 @@ void _whenAValueTakesEffect() {
       await openSettings(tester, 'The server');
 
       expect(
-        find.textContaining('bound the next time the mirror starts'),
+        find.textContaining('bound the next time the server starts'),
         findsOneWidget,
       );
     });

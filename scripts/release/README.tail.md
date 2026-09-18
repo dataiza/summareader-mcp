@@ -34,8 +34,8 @@ The stdio transport, which needs no service and no port:
 
 ## The cache
 
-The decrypted mirror is rebuildable from the log and safe to delete. It is also
-the *most complete* copy of your library, because a mirror runs no retention.
+The decrypted copy is rebuildable from the log and safe to delete. It is also
+the *most complete* copy of your library, because the server runs no retention.
 Treat the directory the way you would treat the library itself.
 
 ## Licence

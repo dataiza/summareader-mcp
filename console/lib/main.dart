@@ -401,7 +401,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         }
         return restart
             ? 'listening on ${supervisor.url}'
-            : 'saved — the mirror binds it the next time it starts';
+            : 'saved — the server binds it the next time it starts';
       });
 
   /// A port that is not a port is a server that will not start, and the field
@@ -910,8 +910,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     _config.saveAutostart(on: on);
     setState(() => _config = widget.options.configuration);
     return on
-        ? 'the mirror will start with this window from now on'
-        : 'the mirror will wait to be started';
+        ? 'the server will start with this window from now on'
+        : 'the server will wait to be started';
   });
 
   /// How often the mirror pulls on its own.

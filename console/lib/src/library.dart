@@ -474,7 +474,7 @@ class RemoteLibrary implements LibrarySource {
     );
     if (response.statusCode == 401) {
       throw StateError(
-        '$url: refused. If the mirror sets bearer_token, the console needs it '
+        '$url: refused. If the server sets bearer_token, the console needs it '
         'in SUMMAREADER_MCP_TOKEN.',
       );
     }

@@ -520,9 +520,9 @@ class _ConsoleViewState extends State<ConsoleView> {
               'and stopping it is on the first screen.'
         : widget.state.ownsLibrary
         ? 'Somewhere else — this console is reading, not running anything.'
-        : 'The app on this machine owns this library and fills it. A mirror '
-              'reading one opens it read-only and never pulls, so there is '
-              'nothing here to start or to schedule.',
+        : 'The app on this machine owns this library and fills it. An MCP '
+              'server reading one opens it read-only and never pulls, so '
+              'there is nothing here to start or to schedule.',
     _card([
       if (widget.state.atLogin case final at?)
         _row(
@@ -533,7 +533,7 @@ class _ConsoleViewState extends State<ConsoleView> {
             onChanged: widget.state.busy ? null : widget.onAtLogin,
           ),
           hint:
-              'Writes a user service, so the mirror comes back after a '
+              'Writes a user service, so the server comes back after a '
               'reboot and outlives this window.',
         ),
     ]),
@@ -541,7 +541,7 @@ class _ConsoleViewState extends State<ConsoleView> {
 
   Widget _address() => _section(
     'Address',
-    'Where the mirror listens. The address takes effect at once, and that '
+    'Where the server listens. The address takes effect at once, and that '
         'means a restart — a listening socket cannot be moved, and narrowing '
         'the address is how a library comes off the network, so it happens '
         'when it is asked for. The port is written and waits for the next '
@@ -614,7 +614,7 @@ class _ConsoleViewState extends State<ConsoleView> {
           ),
         ),
         hint:
-            'Written now, and bound the next time the mirror starts. The one '
+            'Written now, and bound the next time the server starts. The one '
             'setting here that waits: moving a listening socket means '
             'restarting the server under whatever is connected to it, and the '
             'old port exposes nothing the new one would not.',
@@ -631,7 +631,7 @@ class _ConsoleViewState extends State<ConsoleView> {
   Widget _whereTheDataLives() => _section(
     'Where the data lives',
     'The decrypted library, and nothing else. It is the most complete copy of '
-        'your reading that exists anywhere, because a mirror runs no '
+        'your reading that exists anywhere, because the server runs no '
         'retention — so it lives with your data rather than in a cache '
         'directory, whatever it is still spelled.',
     _card([
@@ -673,7 +673,7 @@ class _ConsoleViewState extends State<ConsoleView> {
             // where the decision is made.
             Text(
               widget.state.ownsLibrary
-                  ? 'This mirror fills this directory by pulling and '
+                  ? 'This server fills this directory by pulling and '
                         'decrypting. It is the only thing that writes here.'
                   : 'Opened read-only. Nothing here writes to the app\'s '
                         'library, and nothing pulls into it.',
@@ -717,7 +717,7 @@ class _ConsoleViewState extends State<ConsoleView> {
         // for. The app keeps its library in an application support directory
         // nobody visits on purpose, so the answer is worth spelling out.
         hint: widget.state.ownsLibrary
-            ? 'This mirror fills it, by pulling and decrypting. The path is '
+            ? 'This server fills it, by pulling and decrypting. The path is '
                   'the directory it lives in; the library itself is made on '
                   'the first pull.'
             : 'Somebody else fills it — the app, on this machine — and it is '
@@ -740,7 +740,7 @@ class _ConsoleViewState extends State<ConsoleView> {
     'Sync',
     'How often this asks, and who it asks. The server, the token and the key '
         'are read here and written by pairing, which writes all three in one '
-        'go; the master key is never shown at all. A running mirror takes '
+        'go; the master key is never shown at all. A running server takes '
         'everything on this page on its own — a new interval within seconds, '
         'a new server or token at the next pull — with nothing to restart.',
     _card([
@@ -753,7 +753,7 @@ class _ConsoleViewState extends State<ConsoleView> {
             onChanged: widget.state.busy ? null : widget.onSyncing,
           ),
           hint:
-              'Off is a mirror that holds what it already has and asks for '
+              'Off is a server that holds what it already has and asks for '
               'nothing. Sync now still works, and so does the command line.',
         ),
       if (widget.onPoll != null && widget.state.syncing)
@@ -775,8 +775,8 @@ class _ConsoleViewState extends State<ConsoleView> {
             ],
           ),
           hint:
-              'What the mirror does on its own between presses of Sync now. '
-              'A running mirror takes a new number within a few seconds, and '
+              'What the server does on its own between presses of Sync now. '
+              'A running server takes a new number within a few seconds, and '
               'does not wait the old interval out first.',
         ),
       for (final (label, value) in widget.state.configRows)
@@ -825,9 +825,9 @@ class _ConsoleViewState extends State<ConsoleView> {
     _card([
       if (widget.onAutostart != null)
         _row(
-          'Start the mirror when this opens',
+          'Start the server when this opens',
           ArSwitch(
-            label: 'Start the mirror when this opens',
+            label: 'Start the server when this opens',
             value: widget.state.autostart,
             onChanged: widget.state.busy ? null : widget.onAutostart,
           ),
@@ -966,7 +966,7 @@ class _ConsoleViewState extends State<ConsoleView> {
 
   Widget _search(BuildContext context) => _section(
     'Search',
-    'Over everything in the mirror — titles, sources, summaries and the '
+    'Over everything in the library — titles, sources, summaries and the '
         'article text. The same words, and the same fields, as the terminal '
         'interface and the command line.',
     Column(

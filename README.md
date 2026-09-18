@@ -68,7 +68,7 @@ master key is written without ever being shown.
 
 | Key | Environment | What it is |
 | --- | --- | --- |
-| `server` | `SUMMAREADER_SYNC_URL` | the sync server this mirrors *from* |
+| `server` | `SUMMAREADER_SYNC_URL` | the sync server this pulls *from* |
 | `token` | `SUMMAREADER_DEVICE_TOKEN` | this device's token, revocable |
 | `master_key` | `SUMMAREADER_MASTER_KEY` | the library key, base64, **not** revocable |
 | `name` | `SUMMAREADER_MCP_NAME` | what the app's paired-devices list calls this |
@@ -88,7 +88,7 @@ Defaults: `~/.config/summareader-mcp/` for the config and
 `~/Library/Application Support/summareader-mcp/` on macOS,
 `%APPDATA%`/`%LOCALAPPDATA%` on Windows.
 
-The key is still spelled `cache_dir` and it is not a cache: the mirror runs no
+The key is still spelled `cache_dir` and it is not a cache: the server runs no
 retention, so it holds more than any of your devices do. It is named that
 because renaming it would touch both Dockerfiles, both compose files, the
 systemd unit and every install that already exists.
@@ -129,7 +129,7 @@ out: `sudo loginctl enable-linger "$USER"`.
 
 ### Console bundle
 
-The desktop window, carrying its own copy of the mirror.
+The desktop window, carrying its own copy of the server.
 
 ```sh
 # Linux: summareader-mcp-console-linux-x64.tar.gz
@@ -234,8 +234,8 @@ Two global flags, either of which replaces the config file:
 # read the app's own library on this machine, read-only, without syncing
 summareader-mcp --library ~/.local/share/sk.dataiza.summareader/summareader.sqlite status
 
-# read a mirror somebody else is running — no keys, no library of its own
-export SUMMAREADER_MCP_TOKEN=…                  # that mirror's bearer_token
+# read a server somebody else is running — no keys, no library of its own
+export SUMMAREADER_MCP_TOKEN=…                  # that server's bearer_token
 summareader-mcp --remote http://box:8100 search "borrow checker" --since 30d
 ```
 
@@ -291,12 +291,12 @@ cd console && flutter build linux --release         # or build it yourself
 
 It takes `--config`, `--library`, `--remote`, `--host` and `--port`. With a
 systemd user unit installed, Start and Stop drive `systemctl --user`; without
-one, Start runs a child process. It finds the mirror through
+one, Start runs a child process. It finds the server through
 `SUMMAREADER_MCP_EXE`, then a `summareader-mcp` beside itself, then `PATH`.
 
 Configuration holds two things the config file no longer has to be edited for:
 **Pair**, above, and **Browse…** beside the library path. Browse… asks for a
-directory in both modes — the directory this mirror fills, or the one the app
+directory in both modes — the directory this server fills, or the one the app
 keeps its library in, where `summareader.sqlite` (or `allreader.sqlite`, from
 before a rename) is found by name. A path can still be typed.
 

@@ -101,7 +101,7 @@ void main() {
         ('File', '/home/you/.config/summareader-mcp/summareader-mcp.json'),
         ('Library', '/home/you/.cache/summareader-mcp/library.sqlite'),
         ('Sync server', 'https://sync.example.com'),
-        ('Name', 'MCP mirror'),
+        ('Name', 'MCP server'),
         ('Bearer token', 'set'),
       ],
       results: found.take(4).toList(),

@@ -32,13 +32,13 @@ class Metrics:
         labels = f'{{instance="{name}"}}' if name else ""
 
         lines = [
-            "# HELP summareader_mcp_items Articles held by the mirror.",
+            "# HELP summareader_mcp_items Articles held by the server.",
             "# TYPE summareader_mcp_items gauge",
             f"summareader_mcp_items{labels} {counts['items']}",
             "# HELP summareader_mcp_items_summarized Articles with a summary.",
             "# TYPE summareader_mcp_items_summarized gauge",
             f"summareader_mcp_items_summarized{labels} {counts['summarized']}",
-            "# HELP summareader_mcp_cursor Where the mirror has read up to.",
+            "# HELP summareader_mcp_cursor Where the server has read up to.",
             "# TYPE summareader_mcp_cursor gauge",
             f"summareader_mcp_cursor{labels} {int(store.setting('sync.cursor') or 0)}",
             "# HELP summareader_mcp_pulls_total Sync passes attempted.",

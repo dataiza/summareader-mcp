@@ -1,7 +1,7 @@
 # SummaReader MCP server
 
 An MCP server over your SummaReader library: it joins as one more device, keeps
-a decrypted mirror, and answers questions about what you have read.
+a decrypted copy, and answers questions about what you have read.
 
 **This process holds the master key and a plaintext copy of the library.** It
 is the one place in the design where the encryption ends — which is what it is

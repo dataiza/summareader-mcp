@@ -6,7 +6,7 @@ it.
 
 ## 0.6.0
 
-### Settings reach a running mirror
+### Settings reach a running server
 
 **Sync every** meant what it said only from the next start, and so did a
 re-paired server or a new device token: the loop read the configuration once

@@ -297,7 +297,7 @@ void main() {
       // *Not* the device that showed the code. `from_device` is the name of
       // the machine on the other end of the pairing, and taking it named this
       // mirror after somebody's laptop in the app's device list.
-      expect(read.keys!['name'], 'MCP mirror');
+      expect(read.keys!['name'], 'MCP server');
     });
 
     test('a version 1 code, in the letters that release wrote', () {
@@ -312,7 +312,7 @@ void main() {
       expect(read.keys!['server'], 'https://sync.example');
       expect(read.keys!['token'], 'device-token');
       // `d` is the other device, like `from_device` — see above.
-      expect(read.keys!['name'], 'MCP mirror');
+      expect(read.keys!['name'], 'MCP server');
     });
 
     test('an unnamed payload is still named in the file', () {
@@ -320,7 +320,7 @@ void main() {
         '{"server": "https://sync.example", "token": "t", "master_key": '
         '"$key"}',
       );
-      expect(read.keys!['name'], 'MCP mirror');
+      expect(read.keys!['name'], 'MCP server');
     });
 
     test('nothing on the clipboard and nothing typed', () {
@@ -406,7 +406,7 @@ void main() {
       expect(after['server'], 'https://sync.example');
       expect(after['token'], 'device-token');
       expect(after['master_key'], key);
-      expect(after['name'], 'MCP mirror');
+      expect(after['name'], 'MCP server');
       // The comment keys, the unknown key and the old bearer-token spelling
       // belong to the person, not to this window.
       expect(after['_master_key'], 'NOT revocable.');

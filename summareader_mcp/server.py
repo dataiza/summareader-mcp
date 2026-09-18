@@ -74,7 +74,7 @@ def serve(
         name=config.name or "summareader",
         version=__version__,
         instructions=(
-            "A mirror of somebody's reading library: articles, videos and posts "
+            "A copy of somebody's reading library: articles, videos and posts "
             "they follow, most with a summary. Search it before answering "
             "questions about what they have been reading."
         ),
@@ -177,7 +177,7 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
         name="library_summary",
         description=(
             "How much the library holds: articles, unread, summarized, sources, "
-            "and how far this mirror has read."
+            "and how far this server has read."
         ),
     )
     def library_summary() -> dict:
@@ -186,7 +186,7 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
     @server.tool(
         name="read_item",
         description=(
-            "One article in full, including its text where the mirror holds it. "
+            "One article in full, including its text where the server holds it. "
             "Use after search_library to read something rather than guess at it."
         ),
     )

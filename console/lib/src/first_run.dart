@@ -67,7 +67,7 @@ Future<String?> askWhereTheLibraryGoes(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'This mirror keeps a decrypted copy of your library here. It runs '
+            'This server keeps a decrypted copy of your library here. It runs '
             'no retention, so over time it holds more than any of your devices '
             'do — treat the directory the way you treat the library itself.',
             style: Ar.bodyStyle(13.5, color: Ar.dim(0.75), height: 1.6),
@@ -123,7 +123,7 @@ Future<bool> askAboutWhatIsAlreadyThere(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            '$dir holds a mirror already. Keeping it is almost certainly what '
+            '$dir holds a library already. Keeping it is almost certainly what '
             'you want: it is where a reinstall picks up without pulling your '
             'whole library again.',
             style: Ar.bodyStyle(13.5, color: Ar.dim(0.75), height: 1.6),

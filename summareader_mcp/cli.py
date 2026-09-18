@@ -46,7 +46,7 @@ def main(argv: list[str] | None = None) -> int:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="summareader-mcp",
-        description="Mirror a SummaReader library and ask it questions.",
+        description="Serve a SummaReader library over MCP and ask it questions.",
     )
     parser.add_argument("--version", action="version", version=__version__)
     parser.add_argument(
@@ -57,10 +57,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--remote",
         metavar="URL",
-        help="read a mirror somebody else is running, over its http transport "
+        help="read an MCP server somebody else is running, over its http transport "
         "— e.g. http://box:8100. Needs no config, no keys and no library of "
         "its own; the token comes from SUMMAREADER_MCP_TOKEN. Not --server, "
-        "which in the config file means the sync server this mirrors *from*",
+        "which in the config file means the sync server this pulls *from*",
     )
     parser.add_argument(
         "--library",
@@ -108,7 +108,7 @@ def _parser() -> argparse.ArgumentParser:
     report.add_argument("--heading", default="Library report")
     report.set_defaults(run=_report)
 
-    status = sub.add_parser("status", help="what this mirror holds and where it is")
+    status = sub.add_parser("status", help="what this server holds and where it is")
     status.set_defaults(run=_status)
 
     ui = sub.add_parser("ui", help="the terminal interface")
@@ -179,7 +179,7 @@ def _status(args) -> int:
     if config.remote:
         # Everything below is the mirror's own bookkeeping, and this process is
         # not the mirror. The cursor is a fact about the library, so it stays.
-        print("mode      reading a mirror over its http transport")
+        print("mode      reading another MCP server over its http transport")
         print(f"cursor    {cursor or 0}")
     elif config.reads_a_local_library:
         print("mode      reading the app's own library, read-only")
@@ -259,7 +259,7 @@ def _config(args) -> Config:
             # Both need the master key, and a reader over the port has none by
             # design. Saying so beats "master_key is 32 bytes, not 0".
             raise ConfigError(
-                "--remote reads a mirror; it cannot be one. Drop --remote, or "
+                "--remote reads an MCP server; it cannot be one. Drop --remote, or "
                 "run this against the machine that holds the library."
             )
         return Config.for_remote(
