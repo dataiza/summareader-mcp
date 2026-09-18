@@ -254,6 +254,12 @@ class _ConsoleViewState extends State<ConsoleView> {
               _note(note),
             ],
             const SizedBox(height: Ar.space6),
+            // Drawn even where they cannot be pressed. A console reading
+            // somebody else's mirror has nothing to start, and the refusal
+            // above says so in a sentence — a dead button beside that
+            // sentence is what the sentence is about, where no button at all
+            // would leave it answering a question nobody could ask.
+            _controls(),
             _library(),
             _search(context),
           ],
@@ -459,6 +465,52 @@ class _ConsoleViewState extends State<ConsoleView> {
     ]),
   );
 
+  /// Start, Stop and Sync now — on the page the window opens on.
+  ///
+  /// They were behind Configuration, which is a page somebody goes to when
+  /// something is wrong. These two are what the window is opened *to do*, and
+  /// a control you need every day should not be one press further away than
+  /// the settings you need twice a year.
+  ///
+  /// Above the library rather than below it: what the numbers say depends on
+  /// whether the server is running, so the control that decides that comes
+  /// first.
+  Widget _controls() => Padding(
+    padding: const EdgeInsets.only(bottom: Ar.space6),
+    child: Wrap(
+      spacing: Ar.space2,
+      runSpacing: Ar.space2,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        // One button rather than two: with a Start and a Stop side by side
+        // one of them is always dead, for no reason a reader can see. The
+        // label says what pressing it will do — including when a unit owns
+        // the server and it is systemctl doing it.
+        PrimaryButton(
+          label: widget.state.running ? 'Stop' : 'Start',
+          icon: widget.state.running
+              ? Icons.stop_rounded
+              : Icons.play_arrow_rounded,
+          onTap: widget.state.local && !widget.state.busy
+              ? widget.onToggle
+              : null,
+        ),
+        // "Sync now", not "Pull now", though pulling is all it does. The
+        // app's button says Sync now and this is the same errand from the
+        // other end; two words for one action is a difference somebody has
+        // to learn for nothing.
+        PillButton(
+          label: 'Sync now',
+          icon: Icons.sync_rounded,
+          height: 40,
+          onTap: widget.state.local && !widget.state.busy
+              ? widget.onPull
+              : null,
+        ),
+      ],
+    ),
+  );
+
   Widget _server() => _section(
     'The server',
     widget.state.local
@@ -470,38 +522,6 @@ class _ConsoleViewState extends State<ConsoleView> {
               'reading one opens it read-only and never pulls, so there is '
               'nothing here to start or to schedule.',
     _card([
-      Wrap(
-        spacing: Ar.space2,
-        runSpacing: Ar.space2,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          // One button rather than two: with a Start and a Stop side by side
-          // one of them is always dead, for no reason a reader can see. The
-          // label says what pressing it will do — including when a unit owns
-          // the server and it is systemctl doing it.
-          PrimaryButton(
-            label: widget.state.running ? 'Stop' : 'Start',
-            icon: widget.state.running
-                ? Icons.stop_rounded
-                : Icons.play_arrow_rounded,
-            onTap: widget.state.local && !widget.state.busy
-                ? widget.onToggle
-                : null,
-          ),
-          // "Sync now", not "Pull now", though pulling is all it does. The
-          // app's button says Sync now and this is the same errand from the
-          // other end; two words for one action is a difference somebody has
-          // to learn for nothing.
-          PillButton(
-            label: 'Sync now',
-            icon: Icons.sync_rounded,
-            height: 40,
-            onTap: widget.state.local && !widget.state.busy
-                ? widget.onPull
-                : null,
-          ),
-        ],
-      ),
       if (widget.onSyncing != null)
         _row(
           'Sync automatically',
