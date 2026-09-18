@@ -541,8 +541,11 @@ class _ConsoleViewState extends State<ConsoleView> {
 
   Widget _address() => _section(
     'Address',
-    'Where the mirror listens. Changing either restarts it — a listening '
-        'socket cannot be moved — and rewrites the unit when there is one.',
+    'Where the mirror listens. The address takes effect at once, and that '
+        'means a restart — a listening socket cannot be moved, and narrowing '
+        'the address is how a library comes off the network, so it happens '
+        'when it is asked for. The port is written and waits for the next '
+        'start. Both rewrite the unit when there is one.',
     _card([
       _row(
         'Bind address',
@@ -610,6 +613,11 @@ class _ConsoleViewState extends State<ConsoleView> {
             onSubmitted: widget.onPort,
           ),
         ),
+        hint:
+            'Written now, and bound the next time the mirror starts. The one '
+            'setting here that waits: moving a listening socket means '
+            'restarting the server under whatever is connected to it, and the '
+            'old port exposes nothing the new one would not.',
       ),
     ]),
   );
@@ -732,7 +740,9 @@ class _ConsoleViewState extends State<ConsoleView> {
     'Sync',
     'How often this asks, and who it asks. The server, the token and the key '
         'are read here and written by pairing, which writes all three in one '
-        'go; the master key is never shown at all.',
+        'go; the master key is never shown at all. A running mirror takes '
+        'everything on this page on its own — a new interval within seconds, '
+        'a new server or token at the next pull — with nothing to restart.',
     _card([
       if (widget.onSyncing != null)
         _row(
@@ -766,7 +776,8 @@ class _ConsoleViewState extends State<ConsoleView> {
           ),
           hint:
               'What the mirror does on its own between presses of Sync now. '
-              'Takes effect the next time it starts.',
+              'A running mirror takes a new number within a few seconds, and '
+              'does not wait the old interval out first.',
         ),
       for (final (label, value) in widget.state.configRows)
         _row(

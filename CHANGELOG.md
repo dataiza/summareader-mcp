@@ -4,6 +4,67 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
+## 0.6.0
+
+### Settings reach a running mirror
+
+**Sync every** meant what it said only from the next start, and so did a
+re-paired server or a new device token: the loop read the configuration once
+when the thread began and then ran on it for ever. The console is a different
+process and had no way to tell it otherwise, which is why three separate
+complaints were one bug.
+
+The loop watches the file it was configured from. A `stat` of it every few
+seconds is the whole cost, and it is read again only when that says something
+moved; a file caught mid-write, or one somebody is editing by hand, is ignored
+until it parses again rather than taken as an instruction to stop. **Sync
+every** now takes effect where it is typed and does not wait the old interval
+out, and the sync server and the token are used at the next pull, with nothing
+restarted — an outbound connection can be dialled again without taking a port
+away from anybody.
+
+**Port** is the exception and is now written and left for the next start. It is
+a listening socket, moving it means stopping the server under whatever is
+connected to it, and the old number exposes nothing the new one would not. The
+bind address still takes effect at once, because narrowing it is how a library
+comes off the network and that has to happen when it is asked for. Each row
+says which of the three it is.
+
+### The Restart button has somewhere to go
+
+After downloading a new version the window said it was in place and offered no
+way to use it: the field the button is gated on was declared, read twice, and
+never written.
+
+### Start and Sync now are on the page the window opens on
+
+They were behind Configuration, which is where somebody goes when something is
+wrong. These two are what the window is opened to do. Above the library rather
+than below, because what those numbers say depends on whether the server is
+running — and still drawn where they cannot be pressed, beside the sentence
+that says why.
+
+### How often it asks now sits beside who it asks
+
+**Sync automatically** and **Sync every** were on the server's page while the
+address, the token and the key they use were on another. That page is renamed
+with them: it was "From the config file", which described where its values came
+from rather than what it is for.
+
+### The library says when it last received something
+
+It said **never** on a machine that syncs constantly — truthfully, because both
+of the things it was reading live in memory and go when the server stops. It
+now shows the newest instant the data itself carries.
+
+### A typed value is kept when you leave the box
+
+Only Enter used to commit. Leaving the field, changing the page or closing the
+window keeps it too — but only when the value parses and differs from the one
+stored, and a refused value puts the box back. The pairing box is the
+exception and still wants Enter: it is the same widget, and committing it
+because a mouse left the field would pair with a server nobody chose.
+
 ## 0.5.0
 
 ### The window can start the mirror itself

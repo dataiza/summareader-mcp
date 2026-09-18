@@ -364,46 +364,63 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   /// unit is rewritten too when there is one — otherwise the address changes
   /// in this window and comes back the old one at the next login, with nothing
   /// said.
-  Future<void> _rebind(String host, int port) => _act('rebinding', () async {
-    final supervisor = _supervisor!;
-    if (host == supervisor.host && port == supervisor.port) return '';
-    final refused = _refusal(host);
-    if (refused != null) return refused;
+  ///
+  /// `restart: false` writes the same two places and leaves the server where
+  /// it is listening. That is what a port change does — see [_setPort] for why
+  /// the two halves of one address do not take effect at the same moment.
+  Future<void> _rebind(String host, int port, {bool restart = true}) =>
+      _act(restart ? 'rebinding' : 'saving', () async {
+        final supervisor = _supervisor!;
+        if (host == supervisor.host && port == supervisor.port) return '';
+        final refused = _refusal(host);
+        if (refused != null) return refused;
 
-    // Written before anything is stopped, and before the unit: a config file
-    // that will not parse is a refusal, and refusing with the server still up
-    // on its old address beats leaving it down. A unit and a config that
-    // disagree is worse than either, so both or neither.
-    _config.saveBind(host: host, port: port);
+        // Written before anything is stopped, and before the unit: a config
+        // file that will not parse is a refusal, and refusing with the server
+        // still up on its old address beats leaving it down. A unit and a
+        // config that disagree is worse than either, so both or neither.
+        _config.saveBind(host: host, port: port);
 
-    final wasRunning = await supervisor.running();
-    await supervisor.stop();
-    supervisor.host = host;
-    supervisor.port = port;
-    if (serviceInstalled()) {
-      await installService(
-        renderUnit(
-          host: host,
-          port: port,
-          configFile: _config.file,
-          cacheDir: _config.cacheDir,
-        ),
-      );
-    } else if (wasRunning) {
-      await supervisor.start();
-    }
-    return 'listening on ${supervisor.url}';
-  });
+        final wasRunning = restart && await supervisor.running();
+        if (restart) await supervisor.stop();
+        // Either way, because this is what Start reads: a number written to
+        // the file and not to here is one the next press would ignore.
+        supervisor.host = host;
+        supervisor.port = port;
+        if (serviceInstalled()) {
+          await installService(
+            renderUnit(
+              host: host,
+              port: port,
+              configFile: _config.file,
+              cacheDir: _config.cacheDir,
+            ),
+          );
+        } else if (wasRunning) {
+          await supervisor.start();
+        }
+        return restart
+            ? 'listening on ${supervisor.url}'
+            : 'saved — the mirror binds it the next time it starts';
+      });
 
   /// A port that is not a port is a server that will not start, and the field
   /// is the only place to say so.
+  ///
+  /// Written and then left alone, unlike the bind address beside it. This is a
+  /// listening socket: taking it to another number means stopping the server
+  /// under whatever is connected to it, and a port number is nobody's
+  /// emergency — the old one exposes nothing the new one would not. The
+  /// address is the other way round, because narrowing it is how somebody
+  /// takes their library off the network, and that has to happen when it is
+  /// asked for rather than at the next login.
   void _setPort(String typed) {
     final port = int.tryParse(typed.trim());
     if (port == null || port < 1 || port > 65535) {
       _fading.say('$typed is not a port number.');
       return;
     }
-    unawaited(_rebind(_supervisor!.host, port));
+    unawaited(_rebind(_supervisor!.host, port, restart: false));
   }
 
   Future<void> _pull() => _act('pulling', () async {
@@ -902,6 +919,10 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   /// A floor of 30 seconds, which is not `config.py`'s business — the mirror
   /// takes whatever number it is given, and a five is a mirror asking a sync
   /// server twelve times a minute for ever. Typed here, so refused here.
+  ///
+  /// Written and nothing else, because nothing else is needed: the running
+  /// mirror is a different process and watches this file, so it takes the new
+  /// interval without being restarted and without waiting the old one out.
   void _setPoll(String typed) {
     final seconds = int.tryParse(typed.trim());
     if (seconds == null || seconds < 30) {
@@ -911,7 +932,9 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     if (seconds == _config.pollSeconds) return;
     _config.savePoll(seconds);
     setState(() => _config = widget.options.configuration);
-    _fading.say('pulling every $seconds seconds from the next start');
+    // From now, not from the next start: the loop watches this file, and takes
+    // a new interval within a few seconds of it being written.
+    _fading.say('pulling every $seconds seconds from now');
   }
 
   /// Mint the credential the HTTP port demands.

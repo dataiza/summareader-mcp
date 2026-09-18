@@ -121,6 +121,11 @@ class Config:
     #: A mirror's address, when this process reads one over the port instead of
     #: holding a library of its own. See `for_remote`.
     remote: str | None = None
+    #: The file this was read from, when it was read from one. The sync loop
+    #: watches it, because the console is a different process: a number
+    #: changed in that window reaches a running mirror through this file or it
+    #: does not reach it at all.
+    source: Path | None = None
 
     @property
     def database(self) -> Path:
@@ -212,6 +217,7 @@ class Config:
                 library=Path(library),
                 host=pick("host", "SUMMAREADER_MCP_HOST", "127.0.0.1"),
                 port=_number("port", pick("port", "SUMMAREADER_MCP_PORT", "8100")),
+                source=path,
             )
 
         server = pick("server", "SUMMAREADER_SYNC_URL")
@@ -259,6 +265,7 @@ class Config:
             poll_seconds=_number(
                 "poll_seconds", pick("poll_seconds", "SUMMAREADER_MCP_POLL", "300")
             ),
+            source=path,
         )
 
 

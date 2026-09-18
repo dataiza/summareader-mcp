@@ -245,3 +245,146 @@ class TestTheTokenGuardsTheTools:
         # route answers "ok" and nothing about the library.
         guarded = server_module._guarded(self._inner, "secret")
         assert (await self._get(guarded, "/health"))[0]["status"] == 200
+
+
+class TestTheLoopWatchesTheConfigFile:
+    """The console writes that file, and it is not this process.
+
+    So a mirror asked to pull every minute went on pulling every five until
+    somebody restarted it, and a re-paired mirror went on presenting the token
+    it started with. The loop looks at the file instead.
+    """
+
+    def _write(self, path: Path, **keys) -> None:
+        import base64
+        import json
+
+        path.write_text(
+            json.dumps(
+                {
+                    "server": "https://s.example",
+                    "token": "t",
+                    "master_key": base64.b64encode(b"\0" * 32).decode(),
+                    **keys,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def _syncer(self, tmp_path, monkeypatch, pulls, *, seconds=300):
+        """A loop whose backend records the address and token it was dialled on."""
+
+        class FakeBackend:
+            def __init__(self, server, token, *_):
+                self.server = server
+                self.token = token
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+        class FakePuller:
+            def __init__(self, _config, _store, backend):
+                self._backend = backend
+
+            def pull(self):
+                pulls.append((self._backend.server, self._backend.token))
+                return SimpleNamespace(ok=True)
+
+        monkeypatch.setattr(server_module, "Backend", FakeBackend)
+        monkeypatch.setattr(server_module, "Puller", FakePuller)
+        path = tmp_path / "summareader-mcp.json"
+        self._write(path, cache_dir=str(tmp_path), poll_seconds=seconds)
+        config = Config.load(file=path, environment={})
+        return path, server_module.Syncer(config, object())
+
+    def _running(self, syncer, pulls):
+        thread = syncer.start()
+        while not pulls:
+            time.sleep(0.01)
+        return thread
+
+    def _until(self, predicate, seconds=3.0):
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline and not predicate():
+            time.sleep(0.01)
+        return predicate()
+
+    def test_a_shorter_interval_does_not_wait_out_the_longer_one(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(server_module, "SLICE", 0.02)
+        pulls: list[tuple] = []
+        path, syncer = self._syncer(tmp_path, monkeypatch, pulls, seconds=300)
+        thread = self._running(syncer, pulls)
+        try:
+            # Five minutes, with a second pull expected inside three seconds.
+            self._write(path, cache_dir=str(tmp_path), poll_seconds=1)
+            assert self._until(lambda: len(pulls) >= 2)
+        finally:
+            syncer.stop()
+            thread.join(timeout=2)
+
+    def test_the_next_pull_uses_the_server_and_token_now_written(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(server_module, "SLICE", 0.02)
+        pulls: list[tuple] = []
+        path, syncer = self._syncer(tmp_path, monkeypatch, pulls, seconds=1)
+        thread = self._running(syncer, pulls)
+        try:
+            assert pulls[0] == ("https://s.example", "t")
+            self._write(
+                path,
+                server="https://elsewhere.example",
+                token="u",
+                cache_dir=str(tmp_path),
+                poll_seconds=1,
+            )
+            assert self._until(
+                lambda: ("https://elsewhere.example", "u") in pulls
+            )
+        finally:
+            syncer.stop()
+            thread.join(timeout=2)
+
+    def test_a_file_that_will_not_parse_is_ignored_and_the_loop_carries_on(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(server_module, "SLICE", 0.02)
+        pulls: list[tuple] = []
+        path, syncer = self._syncer(tmp_path, monkeypatch, pulls, seconds=1)
+        thread = self._running(syncer, pulls)
+        try:
+            path.write_text('{"server": "https://half', encoding="utf-8")
+            so_far = len(pulls)
+            assert self._until(lambda: len(pulls) > so_far + 1)
+            # Still the configuration it had, and still pulling with it.
+            assert pulls[-1] == ("https://s.example", "t")
+        finally:
+            syncer.stop()
+            thread.join(timeout=2)
+
+    def test_the_wait_is_not_a_busy_loop(self, tmp_path, monkeypatch):
+        """A look is a `stat`, and there is one every few seconds, not every
+        few milliseconds. `SLICE` is left at its real value here on purpose —
+        it is the number under test."""
+        looks: list[Path | None] = []
+        stamp = server_module._stamp
+        monkeypatch.setattr(
+            server_module,
+            "_stamp",
+            lambda path: (looks.append(path), stamp(path))[1],
+        )
+        pulls: list[tuple] = []
+        _, syncer = self._syncer(tmp_path, monkeypatch, pulls, seconds=300)
+        thread = self._running(syncer, pulls)
+        try:
+            counted = len(looks)
+            time.sleep(0.5)
+            assert len(looks) - counted <= 1
+        finally:
+            syncer.stop()
+            thread.join(timeout=2)

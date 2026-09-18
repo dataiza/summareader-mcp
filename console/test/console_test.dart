@@ -10,9 +10,14 @@
 /// a control nobody can get to is worse than one that is merely dim.
 library;
 
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:summareader_ui/summareader_ui.dart';
+import 'package:summareader_mcp_console/main.dart';
+import 'package:summareader_mcp_console/src/config.dart';
 import 'package:summareader_mcp_console/src/console.dart';
 import 'package:summareader_mcp_console/src/updates.dart';
 import 'package:summareader_mcp_console/src/version.dart';
@@ -91,6 +96,7 @@ Future<void> openSettings(WidgetTester tester, [String? page]) async {
 void main() {
   _thisProgram();
   _leavingAField();
+  _whenAValueTakesEffect();
 
   ConsoleState withAFile({bool syncing = true, bool ownsLibrary = true}) =>
       ConsoleState(
@@ -683,4 +689,87 @@ void _leavingAField() {
       expect(paired, isNull);
     });
   });
+}
+
+/// Three settings, three moments, and a window that has to say which is which.
+///
+/// They look identical in a form: a number in a box. One reaches the running
+/// mirror in seconds, one at its next pull, and one not until it is restarted
+/// — and a person who is not told that reads the slowest of them as broken.
+void _whenAValueTakesEffect() {
+  ConsoleState serving() => ConsoleState(
+    status: 'Running on http://127.0.0.1:8100',
+    running: true,
+    local: true,
+    stats: formatStats(const {'items': 3}, '7'),
+    configRows: const [('File', '/home/you/config.json')],
+    pollSeconds: 900,
+  );
+
+  group('the screen says when a setting arrives', () {
+    testWidgets('the port waits for the next start', (tester) async {
+      await draw(tester, serving());
+      await openSettings(tester, 'The server');
+
+      expect(
+        find.textContaining('bound the next time the mirror starts'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('and the interval does not', (tester) async {
+      await draw(tester, serving(), onPoll: (_) {}, onSyncing: (_) {});
+      await openSettings(tester, 'Sync');
+
+      expect(
+        find.textContaining('does not wait the old interval out'),
+        findsOneWidget,
+      );
+    });
+  });
+
+  group('changing the port', () {
+    testWidgets('writes it and leaves the server listening', (tester) async {
+      // Pumped whole rather than as a view handed a state: what is being
+      // asked is what the handler does, and the handler used to stop the
+      // server under whoever was using it.
+      final dir = Directory.systemTemp.createTempSync('console-port');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}/summareader-mcp.json')
+        ..writeAsStringSync(
+          jsonEncode({
+            'server': 'https://sync.example',
+            'token': 't',
+            'master_key': base64.encode(List.filled(32, 0)),
+            'cache_dir': dir.path,
+            'port': 8100,
+          }),
+        );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ConsoleScreen(options: Options(config: file.path)),
+        ),
+      );
+      await tester.pump();
+
+      ConsoleView view() =>
+          tester.widget<ConsoleView>(find.byType(ConsoleView));
+      view().onPort!('9123');
+      // Twice: the handler writes the file and says what it did, both on the
+      // far side of an await.
+      await tester.pump();
+      await tester.pump();
+
+      expect(jsonDecode(file.readAsStringSync())['port'], 9123);
+      // The message is the evidence of which path ran: a rebind says what it
+      // is now listening on, and this one cannot, because it did not move
+      // anything.
+      expect(view().state.message, contains('the next time it starts'));
+      expect(view().state.port, 9123);
+    });
+    // A machine with the user service installed is one where this would
+    // rewrite somebody's unit and reload their service manager. Nothing in CI
+    // has one.
+  }, skip: serviceInstalled());
 }

@@ -11,7 +11,9 @@ import logging
 import secrets
 import sys
 import threading
+import time
 from datetime import timedelta
+from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
 from starlette.requests import Request
@@ -29,6 +31,19 @@ log = logging.getLogger("summareader_mcp")
 #: How often a mirror pulls when nothing says otherwise. `poll_seconds` in the
 #: config file, or SUMMAREADER_MCP_POLL, moves it.
 PULL_EVERY = timedelta(minutes=5)
+
+#: How long a wait between pulls is cut into, in seconds.
+#:
+#: The console writes the config file from another process, so the only way
+#: this loop can learn that somebody moved the interval is to look — and what
+#: it costs to look is what decides the number. A look is one `stat` of one
+#: small file, a few microseconds and no parsing; the file is read again only
+#: when the stat says it changed. Five seconds is soon enough that a setting
+#: changed in a window appears to take effect as it is typed, and cheap enough
+#: that the default five-minute wait costs sixty stats rather than the three
+#: hundred a one-second slice would spend noticing something that happens
+#: twice a year.
+SLICE = 5.0
 
 
 def serve(
@@ -275,6 +290,14 @@ class Syncer:
 
     A thread rather than a task: the store is synchronous SQLite, and the
     alternative is making every tool async to no benefit.
+
+    It also watches the file it was configured from. The console that changes
+    these settings is a different process and has no way to reach this thread,
+    so a loop that read the configuration once at the top was a loop that went
+    on asking the old server, with the old token, at the old interval, until
+    somebody restarted the mirror. The interval takes effect within a slice of
+    the wait; the server and the token at the next pull, since that is the
+    first moment a connection is dialled again.
     """
 
     def __init__(
@@ -291,6 +314,10 @@ class Syncer:
         self._every = (
             every or timedelta(seconds=config.poll_seconds)
         ).total_seconds()
+        # What the config file looked like the last time it was looked at. Set
+        # here so that the file as it is now counts as already seen: the
+        # configuration in hand was read from it.
+        self._seen = _stamp(config.source)
         self._wake = threading.Event()
         self._stop = threading.Event()
 
@@ -301,15 +328,74 @@ class Syncer:
 
     def run(self) -> None:
         """The loop itself, on whichever thread calls this."""
-        with Backend(self._config.server, self._config.token) as backend:
-            self._name(backend)
-            puller = Puller(self._config, self._store, backend)
-            while not self._stop.is_set():
-                report = puller.pull()
-                self._metrics.pulled(report.ok)
-                log.info("%s", report)
-                self._wake.wait(self._every)
+        while not self._stop.is_set():
+            # Dialled inside the loop rather than once around it. The sync
+            # server and the device token can be rewritten while this runs,
+            # and a client built at the top would go on presenting the token
+            # the file held when the thread started — which is why changing
+            # either used to mean restarting the whole process. The `with`
+            # still closes the old one before the next is opened, and nothing
+            # is listening here: an outbound connection can be redialled
+            # without taking a port away from anybody.
+            using = self._config
+            with Backend(using.server, using.token) as backend:
+                self._name(backend)
+                puller = Puller(using, self._store, backend)
+                # Rebuilt when the configuration is no longer the object these
+                # two were built around, and only then: a file that was
+                # rewritten with the same contents in it leaves this alone.
+                while not self._stop.is_set() and self._config is using:
+                    report = puller.pull()
+                    self._metrics.pulled(report.ok)
+                    log.info("%s", report)
+                    self._wait()
+
+    def _wait(self) -> None:
+        """Hold until the next pull is due, watching the config file as it goes.
+
+        The interval is measured from the pull rather than from the moment
+        somebody changed it, which is what makes a shortened one take effect
+        at once instead of waiting the old one out — and a lengthened one keep
+        a pull that was already due rather than postponing it. Leaving early
+        is `pull_now` or `stop`; both set the same event.
+        """
+        began = time.monotonic()
+        while not self._stop.is_set():
+            # Read afresh each time round, because `_reload` moves it.
+            left = self._every - (time.monotonic() - began)
+            if left <= 0:
+                return
+            if self._wake.wait(min(SLICE, left)):
                 self._wake.clear()
+                return
+            self._reload()
+
+    def _reload(self) -> None:
+        """Take the config file again, when it is not the one already in hand.
+
+        Cheap in the ordinary case, which is every case: a `stat` says whether
+        anything moved, and the file is opened and parsed only when it did.
+        """
+        stamp = _stamp(self._config.source)
+        if stamp is None or stamp == self._seen:
+            return
+        self._seen = stamp
+        try:
+            fresh = Config.load(file=self._config.source)
+        except Exception as error:  # noqa: BLE001 — anything the file managed to be
+            # A file caught between a write and its rename, or one somebody is
+            # editing by hand. Keeping what is already in hand is the only
+            # reading of a configuration that does not parse; it certainly
+            # does not mean stop syncing.
+            log.warning("ignoring %s for now: %s", self._config.source, error)
+            return
+        if fresh == self._config:
+            return
+        log.info("%s changed; taking it", self._config.source)
+        self._config = fresh
+        # Whatever `every` was given at construction holds only until the file
+        # says otherwise, which is the whole point of watching it.
+        self._every = float(fresh.poll_seconds)
 
     def pull_now(self) -> None:
         """Cut the wait short. The pull itself is unchanged."""
@@ -327,6 +413,21 @@ class Syncer:
             log.info("this device is called %r on the server", self._config.name)
         except Exception as error:  # noqa: BLE001 — a name is not vital
             log.info("could not set the device name: %s", error)
+
+
+def _stamp(path: Path | None) -> tuple[int, int] | None:
+    """What one `stat` says about the config file, or None when it cannot say.
+
+    None also for a file that is briefly not there: the console writes through
+    a rename, and the next look is a few seconds away.
+    """
+    if path is None:
+        return None
+    try:
+        found = path.stat()
+    except OSError:
+        return None
+    return found.st_mtime_ns, found.st_size
 
 
 # `_since` lived here too, taking whole days. One parser now, in tools.
