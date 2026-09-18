@@ -1,9 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:summareader_mcp_console/main.dart';
+import 'package:summareader_mcp_console/src/config.dart';
+import 'package:summareader_mcp_console/src/console.dart';
 import 'package:summareader_mcp_console/src/desktop_entry.dart';
 import 'package:summareader_mcp_console/src/updates.dart';
 import 'package:summareader_mcp_console/src/version.dart';
@@ -417,6 +421,55 @@ void main() {
           reason: '$key differs between the installed entry and the packed one',
         );
       }
+    });
+  });
+  group('after a download has finished', () {
+    testWidgets('there is somewhere to restart into', (tester) async {
+      // Nothing ever wrote the field this asserts on, so the window said an
+      // update was in place and offered no way to use it. Pumped whole rather
+      // than as a view handed a state, because the view was always right.
+      final dir = Directory.systemTemp.createTempSync('console-update');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final image = File('${dir.path}/SummaReader-mcp-0.4.8-x86_64.AppImage')
+        ..writeAsStringSync('the old one');
+      final renamed = File('${dir.path}/SummaReader-mcp-9.9.9-x86_64.AppImage');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ConsoleScreen(
+            options: Options(library: '${dir.path}/library.db'),
+            environment: {
+              'APPIMAGE': image.path,
+              'HOME': dir.path,
+              'XDG_DATA_HOME': '',
+            },
+            client: MockClient((_) async => http.Response('the new one', 200)),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      ConsoleView view() =>
+          tester.widget<ConsoleView>(find.byType(ConsoleView));
+
+      // Outside the fake clock: the swap writes a file and renames it, and
+      // real disk work does not finish on a pump. The rename is the last step
+      // before the state is set, so waiting for it is waiting for the update.
+      await tester.runAsync(() async {
+        view().onDownloadUpdate!((
+          version: '9.9.9',
+          image: Uri.parse('https://example.invalid/x.AppImage'),
+        ));
+        while (!renamed.existsSync()) {
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+      await tester.pump();
+
+      expect(view().state.updateSaid, contains('9.9.9'));
+      expect(view().state.updateInstalled, isNotNull);
+      expect(view().state.updateInstalled, endsWith('-9.9.9-x86_64.AppImage'));
     });
   });
 }

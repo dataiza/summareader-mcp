@@ -50,6 +50,7 @@ import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:http/http.dart' as http;
 import 'package:summareader_ui/summareader_ui.dart';
 
 import 'src/addresses.dart';
@@ -92,9 +93,18 @@ class ConsoleScreen extends StatefulWidget {
     super.key,
     required this.options,
     this.chooser = const PlatformDirectoryChooser(),
+    this.client,
+    this.environment,
   });
 
   final Options options;
+
+  /// The two things an update needs from outside this process: somewhere to
+  /// fetch the image from, and an APPIMAGE to replace. Null everywhere but a
+  /// test, which has neither a network nor a running AppImage and so supplies
+  /// a stand-in for both.
+  final http.Client? client;
+  final Map<String, String>? environment;
 
   /// The real dialog, unless something without a screen is handed one.
   final DirectoryChooser chooser;
@@ -493,7 +503,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         autostart: _config.autostart,
         hasToken: _config.bearerToken != null,
         pollSeconds: _config.pollSeconds,
-        updatable: runningImage() != null,
+        updatable: runningImage(widget.environment) != null,
         updateOffer: _updateOffer,
         updateSaid: _updateSaid,
         updateInstalled: _updateInstalled,
@@ -606,6 +616,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     await _act('downloading', () async {
       final refusal = await replaceRunningImage(
         release,
+        client: widget.client,
+        environment: widget.environment,
         onProgress: (received, total) {
           if (!mounted || total == null || total <= 0) return;
           final percent = (received * 100 ~/ total).clamp(0, 100);
@@ -614,11 +626,25 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
           setState(() => _updateSaid = 'Downloading… $percent%');
         },
       );
+      // The filename carries the version and the swap wrote the new program
+      // into the old path, so without this last month's number sits in the
+      // name of this month's program — and the menu entry names it.
+      final now = refusal == null
+          ? await nameForVersion(
+              runningImage(widget.environment)!,
+              release.version,
+              environment: widget.environment,
+            )
+          : null;
       if (mounted) {
-        setState(
-          () => _updateSaid =
-              refusal ?? '${release.version} is in place — restart to use it.',
-        );
+        setState(() {
+          // Where the new program is, which is what Restart now starts. Left
+          // unset, the line said an update was in place and offered no way to
+          // use it.
+          _updateInstalled = now;
+          _updateSaid =
+              refusal ?? '${release.version} is in place — restart to use it.';
+        });
       }
       return refusal ?? 'updated to ${release.version}';
     });
