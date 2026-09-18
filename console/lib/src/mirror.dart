@@ -334,6 +334,64 @@ String? refusal({String? remote, String? library, String? incomplete}) {
   return null;
 }
 
+/// Why the console will not start the mirror by itself, or null when it may.
+///
+/// The switch that asks for this claims the machine is set up for it, and what
+/// a serving mirror is set up with is an address to bind, a port to bind it on
+/// and the credential that guards the two — this port answers with the whole
+/// library, in plaintext. Named rather than counted, as `missing` does it: a
+/// start that quietly did nothing is indistinguishable from a mirror that
+/// failed to bind.
+///
+/// Stricter than [bindRefusal], which lets loopback through without a token,
+/// and deliberately: somebody pressing Start is present to read what happened,
+/// and this is the start nobody watched.
+String? autostartRefusal({
+  required String host,
+  required int port,
+  required String? token,
+  String? configFile,
+}) {
+  final absent = [
+    if (host.trim().isEmpty) 'no bind address',
+    if (port < 1 || port > 65535) 'no port',
+    if (token == null || token.isEmpty) 'no bearer token',
+  ];
+  if (absent.isEmpty) return null;
+  return 'Not starting the mirror on its own: ${absent.join(', ')} in '
+      '${configFile ?? 'the config file'}. The Bearer token row generates one, '
+      'and an address that is filled in is one this window can start by hand. '
+      'Nothing has been started.';
+}
+
+/// The start nobody pressed.
+///
+/// A function rather than three lines inside the window, because whether an
+/// unattended start happened and what it said when it would not is the whole
+/// of this feature, and a window is the part of a program a test cannot look
+/// at. What it returns is what to say: a refusal, "started", or nothing at all
+/// when the mirror was already up — a unit that came back at login, or another
+/// console left open, is not something to start a second copy beside.
+Future<String> autostart({
+  required String host,
+  required int port,
+  required String? token,
+  String? configFile,
+  required Future<bool> Function() alreadyUp,
+  required Future<void> Function() start,
+}) async {
+  final refused = autostartRefusal(
+    host: host,
+    port: port,
+    token: token,
+    configFile: configFile,
+  );
+  if (refused != null) return refused;
+  if (await alreadyUp()) return '';
+  await start();
+  return 'started';
+}
+
 String statusLine({
   required bool running,
   required String url,

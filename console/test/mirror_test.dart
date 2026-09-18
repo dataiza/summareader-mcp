@@ -388,6 +388,62 @@ void main() {
     }
   });
 
+  group('the start nobody pressed', () {
+    // A bind address, a port and a bearer token are what a serving mirror is
+    // set up with, and a switch that claims the machine is set up for it has
+    // to mean all three. Stricter than the Start button, which lets loopback
+    // through without a token: somebody pressing Start is there to read what
+    // happened.
+    Future<String> startingWith({
+      String host = '127.0.0.1',
+      int port = 8100,
+      String? token = 'a-token',
+      required List<String> started,
+      bool up = false,
+    }) => autostart(
+      host: host,
+      port: port,
+      token: token,
+      configFile: '/home/you/.config/summareader-mcp/summareader-mcp.json',
+      alreadyUp: () async => up,
+      start: () async => started.add('started'),
+    );
+
+    test('all three, and it starts', () async {
+      final started = <String>[];
+      expect(await startingWith(started: started), 'started');
+      expect(started, ['started']);
+    });
+
+    test('one missing, and it says which and starts nothing', () async {
+      final started = <String>[];
+
+      final noToken = await startingWith(token: null, started: started);
+      expect(noToken, contains('no bearer token'));
+      expect(noToken, contains('summareader-mcp.json'));
+      // The sentence a refusal in this console ends on.
+      expect(noToken, contains('Nothing has been started.'));
+
+      expect(
+        await startingWith(host: '  ', started: started),
+        contains('no bind address'),
+      );
+      expect(
+        await startingWith(port: 0, started: started),
+        contains('no port'),
+      );
+      expect(started, isEmpty);
+    });
+
+    test('a mirror already up is left alone, and quietly', () async {
+      // A unit that came back at login, or another console left open. A second
+      // copy would fail to bind, which reads from here as nothing happening.
+      final started = <String>[];
+      expect(await startingWith(up: true, started: started), '');
+      expect(started, isEmpty);
+    });
+  });
+
   // Changing the address in the window has to reach the unit, or the mirror
   // comes back on the old address at the next login with nothing said.
   test('a rebind rewrites an installed unit', () async {

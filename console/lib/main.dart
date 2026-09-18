@@ -199,6 +199,16 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       _message = _message.isEmpty
           ? (_refusal(supervisor.host) ?? '')
           : _message;
+      // Opening the window is a start, when the file says so. Off unless it
+      // does, and never a stop — a window opening is no reason to take down a
+      // mirror somebody left running. After the first frame, because `_act`
+      // calls setState and there is no element to rebuild until this widget is
+      // in a tree.
+      if (_config.autostart) {
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => unawaited(_startUnasked(supervisor)),
+        );
+      }
       // The one hook that closes the loop the review opened an hour ago: a
       // child started here dies here, and a server systemd owns is left alone.
       _lifecycle = AppLifecycleListener(
@@ -293,6 +303,24 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       await _tick();
     }
   }
+
+  /// The start nobody pressed.
+  ///
+  /// The prerequisites are checked here rather than trusted: a setting written
+  /// on a machine that had a bearer token and read on one that has none is
+  /// exactly how a start nobody watched would publish a library.
+  Future<void> _startUnasked(Supervisor supervisor) => _act(
+    'starting',
+    () => autostart(
+      host: supervisor.host,
+      port: supervisor.port,
+      token: _config.bearerToken,
+      configFile: _config.file,
+      alreadyUp: () async =>
+          await supervisor.running() || await supervisor.healthy(),
+      start: supervisor.start,
+    ),
+  );
 
   /// One button, so what it does depends on what is running.
   ///
@@ -462,6 +490,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         // a single file this program owns, so replacing it and registering it
         // are things it can honestly offer to do.
         syncing: _config.syncing,
+        autostart: _config.autostart,
+        hasToken: _config.bearerToken != null,
         pollSeconds: _config.pollSeconds,
         updatable: runningImage() != null,
         updateOffer: _updateOffer,
@@ -491,6 +521,11 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       // starts no loop to schedule at all.
       onPoll: _config.fromAFile && _local ? _setPoll : null,
       onSyncing: _config.fromAFile && _local ? _setSyncing : null,
+      // Offered wherever there is a mirror to start and a file to remember the
+      // answer in — including when the token it will need is still missing,
+      // since the row that generates one is two pages away and a switch that
+      // vanished until it was would be a setting nobody could find.
+      onAutostart: _config.fromAFile && _local ? _setAutostart : null,
       onGenerateToken: _config.fromAFile ? _generateToken : null,
       onCheckUpdates: _checkUpdates,
       onDownloadUpdate: _downloadUpdate,
@@ -823,6 +858,19 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         return on ? 'syncing on' : 'syncing off — Sync now still pulls';
       });
 
+  /// Whether opening this window is by itself enough to start the mirror.
+  ///
+  /// Written and nothing else: what it governs happens at the next launch, and
+  /// starting the mirror because somebody turned the switch on would be this
+  /// control doing two things.
+  Future<void> _setAutostart(bool on) => _act('saving', () async {
+    _config.saveAutostart(on: on);
+    setState(() => _config = widget.options.configuration);
+    return on
+        ? 'the mirror will start with this window from now on'
+        : 'the mirror will wait to be started';
+  });
+
   /// How often the mirror pulls on its own.
   ///
   /// A floor of 30 seconds, which is not `config.py`'s business — the mirror
@@ -856,7 +904,8 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     // rebuilt around the new one here — the same path the library row and
     // pairing take, and for the same reason.
     await _reopen();
-    return 'token written, and on the clipboard — paste it into the client';
+    return 'a new token is written, and on the clipboard — paste it into the '
+        'client';
   });
 
   List<(String, String)> _configRows() => [

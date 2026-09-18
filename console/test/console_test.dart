@@ -27,6 +27,7 @@ Future<void> draw(
   void Function({required bool existing})? onBrowse,
   ValueChanged<String>? onPoll,
   ValueChanged<bool>? onSyncing,
+  ValueChanged<bool>? onAutostart,
   void Function(String path, {required bool existing})? onLibrary,
   VoidCallback? onGenerateToken,
   ValueChanged<Release>? onDownloadUpdate,
@@ -46,6 +47,7 @@ Future<void> draw(
         onLibrary: onLibrary,
         onPoll: onPoll,
         onSyncing: onSyncing,
+        onAutostart: onAutostart,
         onDownloadUpdate: onDownloadUpdate,
         onGenerateToken: onGenerateToken,
       ),
@@ -116,6 +118,30 @@ void main() {
     expect(find.text('Sync automatically'), findsWidgets);
     expect(find.text('Sync every'), findsOneWidget);
     expect(find.text('900'), findsOneWidget);
+    expect(find.text('Generate'), findsOneWidget);
+    // Beside the button, so pressing it changes the page it was pressed on:
+    // the toast that says a new one was written is gone six seconds later.
+    expect(find.text('not set'), findsOneWidget);
+  });
+
+  testWidgets('and the token row says once there is one', (tester) async {
+    await draw(
+      tester,
+      ConsoleState(
+        status: 'Not running',
+        running: false,
+        local: true,
+        stats: formatStats(const {'items': 3}, '7'),
+        configRows: const [('File', '/home/you/config.json')],
+        hasToken: true,
+      ),
+      onGenerateToken: () {},
+    );
+    await openSettings(tester, 'The server');
+
+    expect(find.text('set'), findsOneWidget);
+    expect(find.text('not set'), findsNothing);
+    // Whether, and never what.
     expect(find.text('Generate'), findsOneWidget);
   });
 
@@ -478,6 +504,34 @@ void _thisProgram() {
       await openSettings(tester, 'This program');
 
       expect(find.text('Restart now'), findsOneWidget);
+    });
+
+    testWidgets('the mirror can be told to start with the window', (
+      tester,
+    ) async {
+      bool? asked;
+      await draw(
+        tester,
+        ConsoleState(
+          status: 'Not running',
+          running: false,
+          local: true,
+          stats: formatStats(const {'items': 3}, '7'),
+          configRows: const [('File', '/home/you/config.json')],
+        ),
+        onAutostart: (on) => asked = on,
+      );
+      // A tarball has no image to replace, so the page exists here for this
+      // switch alone — which is the case worth asserting, since the page used
+      // to be offered for the update control or not at all.
+      await openSettings(tester, 'This program');
+
+      expect(find.text('Check for updates'), findsNothing);
+      expect(find.text('Start the mirror when this opens'), findsWidgets);
+
+      await tester.tap(find.byType(ArSwitch));
+      await tester.pumpAndSettle();
+      expect(asked, isTrue);
     });
 
     testWidgets('and anything else is offered none', (tester) async {

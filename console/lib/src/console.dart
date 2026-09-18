@@ -40,6 +40,8 @@ class ConsoleState {
     this.updateSaid,
     this.updateInstalled,
     this.syncing = true,
+    this.autostart = false,
+    this.hasToken = false,
     this.pollSeconds = 300,
     this.updatable = false,
   });
@@ -63,6 +65,13 @@ class ConsoleState {
   /// Whether the mirror pulls on its own, and how often when it does.
   final bool syncing;
   final int pollSeconds;
+
+  /// Whether running this console is by itself enough to start the mirror.
+  final bool autostart;
+
+  /// Whether the port has a credential guarding it. Whether, and never what:
+  /// a window that shows a token is a window somebody screenshots.
+  final bool hasToken;
 
   /// A newer release, found and not yet accepted. Replacing the program
   /// somebody is running is not something to do because they pressed "check".
@@ -120,6 +129,7 @@ class ConsoleView extends StatefulWidget {
     this.onPair,
     this.onPoll,
     this.onSyncing,
+    this.onAutostart,
     this.onGenerateToken,
     this.onCheckUpdates,
     this.onDownloadUpdate,
@@ -160,6 +170,11 @@ class ConsoleView extends StatefulWidget {
   /// Turn the pulling loop on and off. Null alongside [onPoll], and also when
   /// this mirror reads the app's own library — there is no loop to switch.
   final ValueChanged<bool>? onSyncing;
+
+  /// Start the mirror whenever this console runs. Null where this console has
+  /// no mirror to start — somebody else's over a port, the app's own library,
+  /// or a configuration that is not finished.
+  final ValueChanged<bool>? onAutostart;
 
   /// Mint a bearer token and write it. Null where there is no config file.
   final VoidCallback? onGenerateToken;
@@ -215,9 +230,10 @@ class _ConsoleViewState extends State<ConsoleView> {
             const SizedBox(height: Ar.space4),
             _pages(),
             const SizedBox(height: Ar.space4),
-            // A page that stopped existing — "This program" on a tarball —
-            // must not leave the window blank.
-            ...switch (_page == ConfigPage.program && !widget.state.updatable
+            // A page that stopped existing — "This program" where there is
+            // neither an image to replace nor a mirror to start — must not
+            // leave the window blank.
+            ...switch (_page == ConfigPage.program && !_thisProgramHasAnything
                 ? ConfigPage.server
                 : _page) {
               ConfigPage.server => [
@@ -227,7 +243,7 @@ class _ConsoleViewState extends State<ConsoleView> {
               ConfigPage.library => [_whereTheDataLives()],
               ConfigPage.sync => [_fromTheConfigFile()],
               ConfigPage.program => [
-                if (widget.state.updatable) _thisProgram(),
+                if (_thisProgramHasAnything) _thisProgram(),
               ],
             },
           ]
@@ -249,11 +265,12 @@ class _ConsoleViewState extends State<ConsoleView> {
     spacing: Ar.space2,
     runSpacing: Ar.space2,
     children: [
-      // Only the pages that have something on them: a tarball has no image to
-      // replace, so "This program" would open on an explanation of why it is
-      // empty, which is worse than not being offered.
+      // Only the pages that have something on them: a tarball with no mirror
+      // of its own has neither control below, so "This program" would open on
+      // an explanation of why it is empty, which is worse than not being
+      // offered.
       for (final page in ConfigPage.values)
-        if (page != ConfigPage.program || widget.state.updatable)
+        if (page != ConfigPage.program || _thisProgramHasAnything)
           Segment(
             label: page.title,
             selected: _page == page,
@@ -564,11 +581,29 @@ class _ConsoleViewState extends State<ConsoleView> {
       if (widget.onGenerateToken != null)
         _row(
           'Bearer token',
-          PillButton(
-            label: 'Generate',
-            icon: Icons.key_outlined,
-            height: 38,
-            onTap: widget.state.busy ? null : widget.onGenerateToken,
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Whether there is one, beside the button that makes one. The
+              // toast says a new token was written and then goes away, which
+              // leaves a row that looks exactly as it did before it was
+              // pressed; this is the half that stays.
+              Tag(
+                label: widget.state.hasToken ? 'set' : 'not set',
+                background: widget.state.hasToken
+                    ? Ar.accent2200
+                    : Ar.neutral200,
+                foreground: widget.state.hasToken ? Ar.accent2800 : Ar.dim(0.6),
+                fontSize: 12.5,
+              ),
+              const SizedBox(width: Ar.space3),
+              PillButton(
+                label: 'Generate',
+                icon: Icons.key_outlined,
+                height: 38,
+                onTap: widget.state.busy ? null : widget.onGenerateToken,
+              ),
+            ],
           ),
           hint:
               'Makes a new one, writes it to the config file and puts it on '
@@ -736,14 +771,39 @@ class _ConsoleViewState extends State<ConsoleView> {
   ///
   /// Pressed, never automatic and never on launch: a window that asks the
   /// network about itself before anybody said so is a window nobody chose.
+
+  /// Whether there is anything to put on the last page: an image this program
+  /// can replace, or a mirror it can be told to start with.
+  bool get _thisProgramHasAnything =>
+      widget.state.updatable || widget.onAutostart != null;
+
   /// The program itself, as opposed to the library it opens or the server it
-  /// supervises. Only drawn when this is an AppImage — see [ConsoleState.updatable].
+  /// supervises.
   Widget _thisProgram() => _section(
     'This program',
-    'An AppImage is one file you downloaded, with no package manager behind '
-        'it, so keeping itself current is something it has to do for itself.',
+    widget.state.updatable
+        ? 'An AppImage is one file you downloaded, with no package manager '
+              'behind it, so keeping itself current is something it has to do '
+              'for itself.'
+        : 'What this console does when it runs, as opposed to the library it '
+              'opens or the server it supervises.',
     _card([
-      _updates(),
+      if (widget.onAutostart != null)
+        _row(
+          'Start the mirror when this opens',
+          ArSwitch(
+            label: 'Start the mirror when this opens',
+            value: widget.state.autostart,
+            onChanged: widget.state.busy ? null : widget.onAutostart,
+          ),
+          hint:
+              'Opening the window is then the whole of it. Off is the window '
+              'waiting to be told, which is what it has always done. It needs '
+              'a bind address, a port and a bearer token before it will start '
+              'anything on its own; with one of them missing nothing starts '
+              'and the window says which.',
+        ),
+      if (widget.state.updatable) _updates(),
       // Found, and waiting to be told to go ahead.
       if (widget.state.updateOffer case final offer?)
         _row(

@@ -30,6 +30,7 @@ class MirrorConfig {
     this.instanceName,
     this.bearerToken,
     this.syncing = true,
+    this.autostart = false,
     this.pollSeconds = 300,
     this.library,
     this.remote,
@@ -53,6 +54,13 @@ class MirrorConfig {
 
   /// Whether the mirror pulls at all. Off is a mirror holding what it has.
   final bool syncing;
+
+  /// Whether opening the console is enough to start the mirror.
+  ///
+  /// Off unless the file says otherwise, which is the opposite default from
+  /// [syncing]: a server nobody asked for is not something to start on a
+  /// machine that has never said so.
+  final bool autostart;
 
   /// How often the mirror pulls, in seconds. The Python side's default is 300
   /// and this matches it — a window that showed a different number from the
@@ -183,6 +191,11 @@ class MirrorConfig {
       bearerToken:
           pick('bearer_token', 'SUMMAREADER_MCP_TOKEN') ??
           pick('http_token', 'SUMMAREADER_MCP_TOKEN'),
+      // The spellings that mean yes, and nothing said is off — the reverse of
+      // `sync` below, because the default here is to start nothing.
+      autostart: const ['true', '1', 'yes'].contains(
+        (pick('autostart', 'SUMMAREADER_MCP_AUTOSTART') ?? '').toLowerCase(),
+      ),
       // Any spelling `config.py` treats as false, and nothing said is on.
       syncing: !const [
         'false',
@@ -234,6 +247,13 @@ class MirrorConfig {
 
   /// Whether the mirror pulls on its own at all.
   void saveSyncing({required bool on}) => save({'sync': on});
+
+  /// Whether the console starts the mirror as soon as it runs.
+  ///
+  /// A key this window owns: `config.py` has never heard of it and passes it
+  /// through, which is what the rest of this file does with every key it does
+  /// not know either.
+  void saveAutostart({required bool on}) => save({'autostart': on});
 
   /// How often the mirror pulls, in seconds.
   void savePoll(int seconds) => save({'poll_seconds': seconds});

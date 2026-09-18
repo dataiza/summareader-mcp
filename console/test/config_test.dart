@@ -202,6 +202,40 @@ void main() {
       );
     });
 
+    test('starting with the window is a key, and off unless it says so', () {
+      // The opposite default from `sync`: a server nobody asked for is not
+      // something to start on a machine that has never said so.
+      expect(
+        MirrorConfig.load(
+          file: '${dir.path}/absent.json',
+          environment: const {},
+        ).autostart,
+        isFalse,
+      );
+      final file = write(dir, _full);
+      MirrorConfig.load(
+        file: file.path,
+        environment: const {},
+      ).saveAutostart(on: true);
+      expect(
+        MirrorConfig.load(file: file.path, environment: const {}).autostart,
+        isTrue,
+      );
+      // And the master key it was written beside is still there.
+      expect(
+        MirrorConfig.load(file: file.path, environment: const {}).masterKey,
+        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+      );
+      MirrorConfig.load(
+        file: file.path,
+        environment: const {},
+      ).saveAutostart(on: false);
+      expect(
+        MirrorConfig.load(file: file.path, environment: const {}).autostart,
+        isFalse,
+      );
+    });
+
     test('writing either leaves the rest of the file alone', () {
       final file = write(dir, _full);
       MirrorConfig.load(file: file.path, environment: const {}).savePoll(120);

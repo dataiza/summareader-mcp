@@ -4,6 +4,37 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
+## 0.5.0
+
+### The window can start the mirror itself
+
+Opening the console and pressing **Start** only ever had one answer on a
+machine set up for it. **Configuration → This program → Start the mirror when
+this opens** makes opening the window the whole of it. Off unless it is turned
+on, and never a stop: a window opening is no reason to take down a mirror
+somebody left running, and one already up — a user service that came back at
+login, another console left open — is left where it is.
+
+It starts nothing unless the three things a serving mirror is set up with are
+there: a bind address, a port and a bearer token. With one of them missing
+nothing is started and the window says which, rather than leaving a start that
+quietly did nothing to look like a mirror that failed to bind. That is stricter
+than the **Start** button, which lets loopback through without a token, and
+deliberately so — somebody pressing Start is there to read what happened.
+
+The switch stays on the page whether or not the token is there yet, since the
+row that generates one is two pages away and a setting that vanished until it
+was would be one nobody could find. **This program** is now offered to a
+tarball too, which until now had nothing on that page.
+
+### A generated bearer token says so
+
+**Generate** wrote a new token, put it on the clipboard and left the row
+looking exactly as it had a moment before. The row now carries **set** or **not
+set** beside the button — whether there is one, never what it is — so pressing
+it changes the page it was pressed on, and the message that appears says a
+*new* token was written.
+
 ## 0.4.13
 
 ### The install question, asked as one
