@@ -8,6 +8,8 @@
 library;
 
 import 'dart:async';
+// AppExitResponse lives here rather than in the widgets layer.
+import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard;
@@ -604,6 +606,7 @@ class _ConsoleViewState extends State<ConsoleView> {
           width: 110,
           child: _NumberField(
             value: '${widget.state.port}',
+            most: 65535,
             onSubmitted: widget.onPort,
           ),
         ),
@@ -753,6 +756,7 @@ class _ConsoleViewState extends State<ConsoleView> {
                 width: 110,
                 child: _NumberField(
                   value: '${widget.state.pollSeconds}',
+                  least: 30,
                   onSubmitted: widget.onPoll,
                 ),
               ),
@@ -903,6 +907,7 @@ class _ConsoleViewState extends State<ConsoleView> {
         _PathField(
           key: const ValueKey('pair'),
           path: '',
+          commitsOnLeaving: false,
           hint: 'or paste it here and press Enter',
           onSubmitted: widget.state.busy ? null : widget.onPair,
         ),
@@ -1097,6 +1102,101 @@ class _ConsoleViewState extends State<ConsoleView> {
   );
 }
 
+/// Takes what was typed when the field is left, not only when Enter is
+/// pressed.
+///
+/// Typing into a box and clicking elsewhere used to throw the value away,
+/// which is the kind of thing nobody reports and everybody works around. So
+/// the value is taken when focus goes, when the page changes — the widget is
+/// gone by then and no focus event arrives, hence [dispose] — and when the
+/// window closes.
+///
+/// The guard sits here rather than in the handlers because the handlers were
+/// written for Enter, where a value somebody chose to send deserves an
+/// answer: [_setPort] says what is wrong with a number, which on a stray
+/// click would be a complaint about somebody who was still typing. Nothing is
+/// sent unless it parses and differs from what is stored, and a value that
+/// does not parse puts the box back to what is stored, so what is on screen
+/// stays true.
+mixin _CommitsOnLeaving<T extends StatefulWidget> on State<T> {
+  /// What the surrounding state holds — and what a refused value reverts to.
+  String get stored;
+
+  ValueChanged<String>? get onSubmitted;
+
+  /// Whether the trimmed text is worth handing over. Anything is, by default.
+  bool accepts(String typed) => true;
+
+  /// Whether leaving the field is a way of sending it at all.
+  ///
+  /// The pairing box is a [_PathField] holding nothing and acting on what is
+  /// pasted into it. Pairing is something asked for, not something a click
+  /// elsewhere should start.
+  bool get commitsOnLeaving => true;
+
+  late final controller = TextEditingController(text: stored);
+
+  /// The field's own node, because losing focus is the event this is about
+  /// and [ArField] already takes one.
+  late final focus = FocusNode();
+
+  AppLifecycleListener? _closing;
+
+  /// What was last handed over, so that leaving a field immediately after
+  /// pressing Enter in it does not hand the same thing over twice.
+  String? _sent;
+
+  @override
+  void initState() {
+    super.initState();
+    focus.addListener(() {
+      if (!focus.hasFocus) commit();
+    });
+    if (commitsOnLeaving) {
+      _closing = AppLifecycleListener(
+        onExitRequested: () async {
+          commit();
+          return AppExitResponse.exit;
+        },
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _closing?.dispose();
+    commit();
+    focus.dispose();
+    controller.dispose();
+    super.dispose();
+  }
+
+  void commit() {
+    final handler = onSubmitted;
+    final typed = controller.text.trim();
+    if (!commitsOnLeaving || handler == null || typed == _sent) return;
+    if (!accepts(typed)) {
+      controller.text = stored;
+      return;
+    }
+    if (typed == stored.trim()) return;
+    _sent = typed;
+    handler(typed);
+  }
+
+  /// What [ArField] is handed. Enter still goes straight to the handler,
+  /// complaint and all — only when the value is captured changes here, not
+  /// what capturing it does — and is noted so the blur that follows is quiet.
+  ValueChanged<String>? get submit {
+    final handler = onSubmitted;
+    if (handler == null) return null;
+    return (typed) {
+      _sent = typed.trim();
+      handler(typed);
+    };
+  }
+}
+
 /// A path, in a field wide enough to read one — and the box a pairing payload
 /// is pasted into, which wants the same thing of a field and nothing more.
 ///
@@ -1108,31 +1208,43 @@ class _PathField extends StatefulWidget {
     required this.path,
     this.hint,
     this.onSubmitted,
+    this.commitsOnLeaving = true,
   });
 
   final String path;
   final String? hint;
   final ValueChanged<String>? onSubmitted;
 
+  /// False where the box is not showing a stored value: see
+  /// [_CommitsOnLeaving.commitsOnLeaving].
+  final bool commitsOnLeaving;
+
   @override
   State<_PathField> createState() => _PathFieldState();
 }
 
-class _PathFieldState extends State<_PathField> {
-  late final _controller = TextEditingController(text: widget.path);
+class _PathFieldState extends State<_PathField> with _CommitsOnLeaving {
+  @override
+  String get stored => widget.path;
 
   @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+  ValueChanged<String>? get onSubmitted => widget.onSubmitted;
+
+  @override
+  bool get commitsOnLeaving => widget.commitsOnLeaving;
+
+  /// A library lives somewhere, so an empty box is a box somebody is halfway
+  /// through emptying rather than an answer.
+  @override
+  bool accepts(String typed) => typed.isNotEmpty;
 
   @override
   Widget build(BuildContext context) => ArField(
-    controller: _controller,
+    controller: controller,
+    focusNode: focus,
     hint: widget.hint,
     background: Ar.neutral100,
-    onSubmitted: widget.onSubmitted,
+    onSubmitted: submit,
   );
 }
 
@@ -1141,29 +1253,48 @@ class _PathFieldState extends State<_PathField> {
 /// Its own widget because a controller rebuilt on every poll loses the caret
 /// twice a second, which is a field nobody can type four digits into.
 class _NumberField extends StatefulWidget {
-  const _NumberField({required this.value, this.onSubmitted});
+  const _NumberField({
+    required this.value,
+    this.onSubmitted,
+    this.least = 1,
+    this.most,
+  });
 
   final String value;
   final ValueChanged<String>? onSubmitted;
+
+  /// The bounds the handler would complain about, repeated here because a
+  /// complaint is the right answer to Enter and the wrong one to a click
+  /// somewhere else. Two spellings of one rule, and the handler is still the
+  /// one that decides — this only decides whether to ask it.
+  final int least;
+  final int? most;
 
   @override
   State<_NumberField> createState() => _NumberFieldState();
 }
 
-class _NumberFieldState extends State<_NumberField> {
-  late final _controller = TextEditingController(text: widget.value);
+class _NumberFieldState extends State<_NumberField> with _CommitsOnLeaving {
+  @override
+  String get stored => widget.value;
 
   @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  ValueChanged<String>? get onSubmitted => widget.onSubmitted;
+
+  @override
+  bool accepts(String typed) {
+    final number = int.tryParse(typed);
+    return number != null &&
+        number >= widget.least &&
+        (widget.most == null || number <= widget.most!);
   }
 
   @override
   Widget build(BuildContext context) => ArField(
-    controller: _controller,
+    controller: controller,
+    focusNode: focus,
     background: Ar.neutral100,
-    onSubmitted: widget.onSubmitted,
+    onSubmitted: submit,
   );
 }
 

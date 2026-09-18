@@ -90,6 +90,7 @@ Future<void> openSettings(WidgetTester tester, [String? page]) async {
 
 void main() {
   _thisProgram();
+  _leavingAField();
 
   ConsoleState withAFile({bool syncing = true, bool ownsLibrary = true}) =>
       ConsoleState(
@@ -239,8 +240,11 @@ void main() {
     expect(find.text('Address'), findsOneWidget);
     expect(find.text('Start'), findsNothing, reason: 'on the main page now');
     expect(find.text('Sync now'), findsNothing, reason: 'on the main page now');
-    expect(find.text('Sync automatically'), findsNothing,
-        reason: 'on the Sync page, with the server it asks');
+    expect(
+      find.text('Sync automatically'),
+      findsNothing,
+      reason: 'on the Sync page, with the server it asks',
+    );
 
     await goToPage(tester, 'Library');
     expect(find.text('Where the data lives'), findsOneWidget);
@@ -562,6 +566,121 @@ void _thisProgram() {
 
       expect(find.text('This program'), findsNothing);
       expect(find.text('Check for updates'), findsNothing);
+    });
+  });
+}
+
+/// Nothing typed into a box is lost by leaving it.
+///
+/// Every field here was Enter-only, which is a rule a window teaches nobody:
+/// the value is simply gone, with no sign that anything was refused.
+void _leavingAField() {
+  ConsoleState withAFile() => ConsoleState(
+    status: 'Not running',
+    running: false,
+    local: true,
+    ownsLibrary: true,
+    stats: formatStats(const {'items': 3}, '7'),
+    configRows: const [('File', '/home/you/config.json')],
+    syncing: true,
+    pollSeconds: 900,
+    libraryPath: '/home/you/library',
+  );
+
+  /// What a click somewhere else does, without a somewhere else to click.
+  Future<void> leave(WidgetTester tester) async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+  }
+
+  group('leaving a field', () {
+    testWidgets('hands over what was typed', (tester) async {
+      String? asked;
+      await draw(tester, withAFile(), onPoll: (value) => asked = value);
+      await openSettings(tester, 'Sync');
+
+      await tester.enterText(find.widgetWithText(ArField, '900'), '300');
+      await leave(tester);
+
+      expect(asked, '300');
+    });
+
+    testWidgets('and so does changing the page', (tester) async {
+      // The awkward one: the field is gone by the time anything notices, and
+      // no focus event arrives to say so.
+      String? asked;
+      await draw(tester, withAFile(), onPoll: (value) => asked = value);
+      await openSettings(tester, 'Sync');
+
+      await tester.enterText(find.widgetWithText(ArField, '900'), '300');
+      await goToPage(tester, 'The server');
+
+      expect(asked, '300');
+    });
+
+    testWidgets('but not what nobody changed', (tester) async {
+      String? asked;
+      await draw(tester, withAFile(), onPoll: (value) => asked = value);
+      await openSettings(tester, 'Sync');
+
+      await tester.enterText(find.widgetWithText(ArField, '900'), '900');
+      await leave(tester);
+
+      expect(asked, isNull);
+    });
+
+    testWidgets('and not a number that is not one', (tester) async {
+      // The reason the guard is in the field and not in the handler: the
+      // handler answers a bad number with a complaint, which is the right
+      // answer to Enter and a complaint about nothing to somebody who clicked
+      // away while still typing. Under thirty is refused for the same reason.
+      String? asked;
+      await draw(tester, withAFile(), onPoll: (value) => asked = value);
+      await openSettings(tester, 'Sync');
+
+      for (final nonsense in ['soon', '', '5']) {
+        await tester.enterText(find.byType(ArField).first, nonsense);
+        await leave(tester);
+        expect(asked, isNull, reason: nonsense);
+        // And the box says what is stored, because a box saying something
+        // else is a window saying something untrue.
+        expect(find.text('900'), findsOneWidget, reason: nonsense);
+      }
+    });
+
+    testWidgets('and not an emptied library path', (tester) async {
+      String? asked;
+      await draw(
+        tester,
+        withAFile(),
+        onLibrary: (path, {required existing}) => asked = path,
+      );
+      await openSettings(tester, 'Library');
+
+      await tester.enterText(
+        find.widgetWithText(ArField, '/home/you/library'),
+        '',
+      );
+      await leave(tester);
+
+      expect(asked, isNull);
+      expect(find.text('/home/you/library'), findsOneWidget);
+    });
+
+    testWidgets('and never pairs on the way out', (tester) async {
+      // The pairing box holds nothing and acts on what is pasted into it.
+      // Pairing is asked for, not started by a click elsewhere.
+      String? paired;
+      await draw(tester, withAFile(), onPair: (value) => paired = value);
+      await openSettings(tester, 'Sync');
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'or paste it here and press Enter'),
+        '{"server": "https://sync.example"}',
+      );
+      await leave(tester);
+
+      expect(paired, isNull);
     });
   });
 }
