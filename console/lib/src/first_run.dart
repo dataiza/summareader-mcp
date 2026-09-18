@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:summareader_ui/summareader_ui.dart';
 
+import 'version.dart';
+
 /// The shell this window's dialogs sit in, so they read as pages of the
 /// console rather than as whatever the platform's dialog looks like.
 ///
@@ -255,6 +257,11 @@ Future<bool> askAboutTheMenu(BuildContext context) async {
 /// Asked rather than done, on the same grounds as adding it in the first
 /// place: this rewrites a file in somebody's home, and the launch it happens
 /// on has nothing to do with the menu as far as they are concerned.
+///
+/// Put as an install question, because that is what it is from the outside:
+/// a release was downloaded and run, and yes puts it where the menu looks.
+/// The two paths and the deletion are still here, one tap down, for anyone
+/// who wants to know before agreeing.
 Future<bool> askAboutARepoint(
   BuildContext context,
   String named,
@@ -262,59 +269,135 @@ Future<bool> askAboutARepoint(
   String? replacing,
 }) async {
   var wanted = false;
+  // Shut, because the question in the title is the whole of it for anyone who
+  // has just downloaded a release and run it. The paths matter to the person
+  // who wants to know what is being moved and where, and to nobody else.
+  var showingDetail = false;
 
   await showConsoleDialog(
     context,
-    'This is not the copy in your applications menu',
+    'Install version $consoleVersion?',
     Builder(
       builder: (dialogContext) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            'Your applications menu starts this one:',
-            style: Ar.bodyStyle(13.5, color: Ar.dim(0.75), height: 1.6),
-          ),
-          const SizedBox(height: 6),
-          SelectableText(named, style: Ar.bodyStyle(12.5, color: Ar.dim(0.6))),
-          const SizedBox(height: 12),
-          Text(
-            'and you are running this one:',
-            style: Ar.bodyStyle(13.5, color: Ar.dim(0.75), height: 1.6),
-          ),
-          const SizedBox(height: 6),
-          SelectableText(
-            running,
-            style: Ar.bodyStyle(12.5, color: Ar.dim(0.6)),
-          ),
-          const SizedBox(height: 12),
-          // What the button does, rather than what is wrong. Somebody who has
-          // just downloaded a new release and run it wants to be told they are
-          // installing it, and where it is going.
-          Text(
-            replacing != null
-                ? 'Moving this one to ~/Applications and starting it from the '
-                      'menu from now on makes it the copy you have installed. '
-                      '$replacing is deleted — it is the same program, one '
-                      'download behind, and two copies each update themselves '
-                      'separately.'
-                : 'Moving this one to ~/Applications and starting it from the '
-                      'menu from now on makes it the copy you have installed. '
-                      'If the entry keeps naming a file that is gone, the icon '
-                      'in your launcher starts nothing at all.',
-            style: Ar.bodyStyle(13, color: Ar.dim(0.7), height: 1.6),
+          StatefulBuilder(
+            builder: (context, setDetail) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // One sentence above the fold, so a shut dialog is still a
+                // sentence rather than a title and two buttons.
+                Text(
+                  'You are running a copy your applications menu does not '
+                  'know about. Installing it makes this the one the menu '
+                  'starts.',
+                  style: Ar.bodyStyle(13.5, color: Ar.dim(0.75), height: 1.6),
+                ),
+                const SizedBox(height: 12),
+                Hoverable(
+                  onTap: () => setDetail(() => showingDetail = !showingDetail),
+                  builder: (context, hovered) => Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        showingDetail
+                            ? Icons.expand_more_rounded
+                            : Icons.chevron_right_rounded,
+                        size: 18,
+                        color: Ar.dim(hovered ? 0.9 : 0.6),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'What this does',
+                        style: Ar.bodyStyle(
+                          13,
+                          color: Ar.dim(hovered ? 0.9 : 0.7),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 140),
+                  alignment: Alignment.topLeft,
+                  child: showingDetail
+                      ? Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Your applications menu starts this one:',
+                                style: Ar.bodyStyle(
+                                  13.5,
+                                  color: Ar.dim(0.75),
+                                  height: 1.6,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              SelectableText(
+                                named,
+                                style: Ar.bodyStyle(12.5, color: Ar.dim(0.6)),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'and you are running this one:',
+                                style: Ar.bodyStyle(
+                                  13.5,
+                                  color: Ar.dim(0.75),
+                                  height: 1.6,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              SelectableText(
+                                running,
+                                style: Ar.bodyStyle(12.5, color: Ar.dim(0.6)),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                replacing != null
+                                    ? 'Moving this one to ~/Applications and '
+                                          'starting it from the menu from now '
+                                          'on makes it the copy you have '
+                                          'installed. $replacing is deleted — '
+                                          'it is the same program, one '
+                                          'download behind, and two copies '
+                                          'each update themselves separately.'
+                                    : 'Moving this one to ~/Applications and '
+                                          'starting it from the menu from now '
+                                          'on makes it the copy you have '
+                                          'installed. If the entry keeps '
+                                          'naming a file that is gone, the '
+                                          'icon in your launcher starts '
+                                          'nothing at all.',
+                                style: Ar.bodyStyle(
+                                  13,
+                                  color: Ar.dim(0.7),
+                                  height: 1.6,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : const SizedBox(width: double.infinity),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 18),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               PillButton(
-                label: 'Leave it',
+                label: 'Not now',
                 onTap: () => Navigator.of(dialogContext).pop(),
               ),
               const SizedBox(width: 9),
               PrimaryButton(
-                label: 'Use this one',
+                label: 'Install',
                 onTap: () {
                   wanted = true;
                   Navigator.of(dialogContext).pop();

@@ -4,6 +4,20 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
+## 0.4.13
+
+### The install question, asked as one
+
+The dialog that appears when a downloaded release is run opened with **This is
+not the copy in your applications menu** and then spent two paths, a move and a
+deletion getting to the point. From the outside it is one sentence: a new
+release was downloaded, it was run, and yes installs it. So that is the title
+now, with the version in it, and **Install** on the button.
+
+None of the detail is gone — the path the menu starts, the path being run, what
+moving does and what is deleted are all under **What this does**, shut until
+somebody wants them.
+
 ## 0.4.12
 
 ### Configuration is pages
