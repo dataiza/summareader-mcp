@@ -90,6 +90,9 @@ void main() {
         // What a mirror that has been running an hour looks like, rather than
         // whatever the machine taking the picture happens to have done.
         const Scraped(pulls: 14, failures: 0, lastPullAge: 240),
+        // And a fixed clock to subtract that age from, or the picture would
+        // differ from the one taken yesterday by exactly a day.
+        DateTime.utc(2026, 8, 12, 9, 15),
       ),
       // Where a real installation keeps these, rather than the temporary
       // directory actually being read: the picture is of the program, and

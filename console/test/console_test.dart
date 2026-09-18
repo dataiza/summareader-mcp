@@ -286,6 +286,7 @@ void main() {
           const {'items': 1284, 'unread': 37, 'sources': 9},
           '418',
           const Scraped(failures: 0, lastPullAge: 90),
+          DateTime.utc(2026, 8, 12, 9, 15),
         ),
         configRows: const [('Bearer token', 'set')],
         results: [
@@ -302,7 +303,7 @@ void main() {
 
     expect(find.text('1284'), findsOneWidget);
     expect(find.text('418'), findsOneWidget);
-    expect(find.text('1 minute ago'), findsOneWidget);
+    expect(find.text('2026-08-12 09:13'), findsOneWidget);
     expect(find.text('running'), findsOneWidget);
     expect(find.text('2026-08-11'), findsOneWidget);
     expect(

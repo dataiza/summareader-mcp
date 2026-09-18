@@ -258,9 +258,11 @@ void main() {
           'summarized': 1190,
           'bodies': 1102,
           'sources': 9,
+          'synced': 1786437600, // 2026-08-11 08:40 UTC
         },
         '418',
         const Scraped(failures: 0, lastPullAge: 90),
+        DateTime.utc(2026, 8, 12, 9, 15),
       ).map((pair) => MapEntry(pair.$1, pair.$2)),
     );
 
@@ -270,7 +272,9 @@ void main() {
     expect(shown['With text'], '1102');
     expect(shown['Sources'], '9');
     expect(shown['Cursor'], '418');
-    expect(shown['Last pull'], '1 minute ago');
+    // The server is up and says it pulled ninety seconds ago, which is newer
+    // than anything in the library — so the gauge wins.
+    expect(shown['Last pull'], '2026-08-12 09:13');
     // Zero failures is worth printing: "0" is the reassurance, and a dash
     // reads as "not measured".
     expect(shown['Failures'], '0');
@@ -283,12 +287,16 @@ void main() {
     expect(quiet['Failures'], '—');
   });
 
-  test('how long ago, in the roughest terms that are still true', () {
-    expect(ago(null), 'never');
-    expect(ago(12), 'just now');
-    expect(ago(3599), '59 minutes ago');
-    expect(ago(3600), '1 hour ago');
-    expect(ago(172800), '2 days ago');
+  test('a library with data never reports never, with or without a server', () {
+    final now = DateTime.utc(2026, 8, 12, 9, 15);
+    // The whole of card 337: the server is stopped, so there is no gauge and
+    // no pull this window started, and the library plainly holds synced rows.
+    expect(lastPull(null, 1786437600, now: now), '2026-08-11 08:40');
+    // A gauge older than the data does not drag the row backwards.
+    expect(lastPull(172800, 1786437600, now: now), '2026-08-11 08:40');
+    // Nothing has ever arrived and nothing is running: there is no date to
+    // print, and saying so is still the honest answer.
+    expect(lastPull(null, null, now: now), 'never');
   });
 
   test('the status line says who is running it', () {

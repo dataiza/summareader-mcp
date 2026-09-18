@@ -12,6 +12,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:summareader_mcp_console/src/library.dart';
+import 'package:summareader_mcp_console/src/mirror.dart';
 
 import 'seed.dart';
 
@@ -41,10 +42,30 @@ void main() {
       'summarized': 10,
       'bodies': 1,
       'sources': 4,
+      // The newest instant the data carries: a1's summary, twenty minutes
+      // after the article it summarises. Nothing records the pull itself, and
+      // this is what the pane shows in its place.
+      'synced': 1786437600,
     });
     expect(await library.setting('sync.cursor'), '418');
     expect(await library.setting('nothing.here'), isNull);
   });
+
+  test(
+    'a stopped server does not make a synced library look untouched',
+    () async {
+      // Card 337: nothing is running, so there is no gauge and no pull this
+      // window started — which used to be the whole of the pane's evidence, and
+      // read as "never" over a library holding a thousand synced rows.
+      final shown = Map.fromEntries(
+        formatStats(
+          await library.counts(),
+          await library.setting('sync.cursor'),
+        ).map((pair) => MapEntry(pair.$1, pair.$2)),
+      );
+      expect(shown['Last pull'], '2026-08-11 08:40');
+    },
+  );
 
   test('everything, newest first', () async {
     final all = await library.search('');

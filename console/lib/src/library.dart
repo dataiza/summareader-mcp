@@ -204,11 +204,27 @@ class LocalLibrary implements LibrarySource {
              (SELECT COUNT(DISTINCT item_id) FROM summaries
               WHERE state = 'ok' AND text IS NOT NULL) AS summarized,
              (SELECT COUNT(*) FROM extracted_texts) AS bodies,
-             (SELECT COUNT(*) FROM channels WHERE kind <> 'saved') AS sources
+             (SELECT COUNT(*) FROM channels WHERE kind <> 'saved') AS sources,
+             -- When this library last took delivery of anything. There is no
+             -- column recording the pull itself — the schema is a subset of
+             -- the app's and the app has no pulls — so this is the newest
+             -- instant carried by the data that arrived: an article's fetch,
+             -- the moment a read mark landed here, a summary's creation.
+             -- Chosen over any one of the three because a library that has
+             -- only been catching up on read marks for a week has a stale
+             -- fetched_at and is emphatically not idle.
+             (SELECT MAX(t) FROM (
+                SELECT MAX(fetched_at) AS t FROM items
+                UNION ALL SELECT MAX(read_at) FROM items
+                UNION ALL SELECT MAX(created_at) FROM summaries
+              )) AS synced
     ''').first;
     return {
       for (final key in ['items', 'unread', 'summarized', 'bodies', 'sources'])
         key: (row[key] as int?) ?? 0,
+      // Absent rather than zero on an empty library: zero is 1970, and the
+      // pane has to be able to tell "nothing has ever arrived" from a date.
+      if (row['synced'] case final int synced) 'synced': synced,
     };
   }
 

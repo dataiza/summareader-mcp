@@ -262,32 +262,55 @@ class OwnPulls {
   );
 }
 
-/// How long ago, in the roughest terms that are still true.
+/// When the library last took delivery of anything, as a date and time.
 ///
-/// Nobody reads a status pane for a figure in seconds, and a pull that
-/// happened 4,812 seconds ago is a sentence the reader has to do arithmetic on
-/// before it means anything.
-String ago(double? seconds) {
-  if (seconds == null) return 'never';
-  if (seconds < 90) return 'just now';
-  if (seconds < 3600) return _ago(seconds ~/ 60, 'minute');
-  if (seconds < 172800) return _ago(seconds ~/ 3600, 'hour');
-  return _ago(seconds ~/ 86400, 'day');
+/// Both sources are read and the later one wins. The gauge is the precise
+/// answer while a server is running — it knows about a pull that brought
+/// nothing — but it lives in that process's memory and is gone the moment the
+/// process is, and a console opened this minute has no [OwnPulls] either. So
+/// the row read "never" on a machine that had pulled thousands of times: the
+/// age was truthfully absent, and absent was being rendered as an answer about
+/// the data rather than as one about the process. [syncedAt] is the newest
+/// instant the data itself carries, which survives a restart of either.
+///
+/// A date rather than an age because the two sources are not equally fresh and
+/// "3 hours ago" invites the reader to trust a precision that the stored one
+/// does not have. UTC, spelled the way `Item.when` spells an article's date:
+/// every other date in this window is UTC, and one row quietly switching to
+/// local time would be the one nobody could compare against the others.
+String lastPull(double? ageSeconds, int? syncedAt, {DateTime? now}) {
+  final clock = (now ?? DateTime.now()).toUtc();
+  final instants = [
+    if (ageSeconds != null)
+      clock.subtract(Duration(seconds: ageSeconds.round())),
+    if (syncedAt != null)
+      DateTime.fromMillisecondsSinceEpoch(syncedAt * 1000, isUtc: true),
+  ];
+  if (instants.isEmpty) return 'never';
+  final at = instants.reduce((a, b) => a.isAfter(b) ? a : b);
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${at.year.toString().padLeft(4, '0')}-${two(at.month)}-'
+      '${two(at.day)} ${two(at.hour)}:${two(at.minute)}';
 }
-
-/// Two words of English rather than a pluralisation library, for the three
-/// nouns this pane ever counts.
-String _ago(int count, String noun) =>
-    '$count $noun${count == 1 ? '' : 's'} ago';
 
 /// The stats pane, as label-and-value pairs.
 ///
 /// Pairs rather than a formatted block, so the same numbers can be laid out as
 /// a grid and asserted in a test without parsing a paragraph back apart.
+///
+/// `synced` is not a count; it rides in the same map because it comes out of
+/// the same one-row query and the console carries that map around already. A
+/// `--remote` library does not report it, which costs nothing: a mirror that
+/// answers over its port is by definition a running server, so the gauge is
+/// there.
+///
+/// [now] is only ever passed by a test — a picture of this pane has to look
+/// the same tomorrow.
 List<(String, String)> formatStats(
   Map<String, int> counts,
   String? cursor, [
   Scraped? scraped,
+  DateTime? now,
 ]) {
   final failures = scraped?.failures;
   return [
@@ -297,7 +320,7 @@ List<(String, String)> formatStats(
     ('With text', '${counts['bodies'] ?? 0}'),
     ('Sources', '${counts['sources'] ?? 0}'),
     ('Cursor', '${int.tryParse(cursor ?? '') ?? 0}'),
-    ('Last pull', ago(scraped?.lastPullAge)),
+    ('Last pull', lastPull(scraped?.lastPullAge, counts['synced'], now: now)),
     // Zero failures is worth printing rather than hiding: "0" is the
     // reassurance, and a blank reads as "not measured".
     ('Failures', failures == null ? '—' : '${failures.toInt()}'),
