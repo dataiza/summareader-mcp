@@ -4,7 +4,7 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
-## Unreleased
+## 0.7.0
 
 ### The tags are visible now
 
