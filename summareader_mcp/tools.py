@@ -174,19 +174,36 @@ def library_report(
     source: str | None = None,
     since: datetime | None = None,
     until: datetime | None = None,
+    read_since: datetime | None = None,
+    read_until: datetime | None = None,
+    unread: bool | None = None,
+    summarized: bool | None = None,
+    tags: list[str] | None = None,
     fmt: str = "md",
     limit: int = 50,
 ) -> str:
+    """The same query as `search_library`, written out instead of returned.
+
+    Every filter, then, and under the same names: the two are one question
+    asked twice, and a report that could not be narrowed by tag or by unread
+    made "everything tagged rust I have not read" unaskable although both
+    halves of it existed.
+    """
     items = store.search(
         query,
         title=title,
         source=source,
         since=since,
         until=until,
+        read_since=read_since,
+        read_until=read_until,
+        unread=unread,
+        summarized=summarized,
+        tags=tags,
         limit=max(1, min(limit, 500)),
     )
-    title = "Library report" if not query else f"Library report — {query}"
-    return render(items, fmt, title=title)
+    heading = "Library report" if not query else f"Library report — {query}"
+    return render(items, fmt, title=heading)
 
 
 def _items(store: Store, items: list) -> list[dict[str, Any]]:

@@ -47,6 +47,12 @@ def as_csv(items: Iterable[Item]) -> str:
 
 def as_markdown(items: list[Item], *, title: str = "Library report") -> str:
     """The readable one: what was asked for, then each article under it."""
+    if not items:
+        # A heading, a count of zero and an empty source table is a document
+        # that has to be read before it admits it says nothing. The other two
+        # formats are for machines, where an empty list is already the answer.
+        return f"# {title}\n\nNothing matched.\n"
+
     lines = [f"# {title}", ""]
 
     by_source: dict[str, int] = {}

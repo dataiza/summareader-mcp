@@ -103,3 +103,30 @@ def test_tags_come_back_on_every_item(library):
 
 def test_an_empty_library_has_an_empty_vocabulary(store):
     assert tools.list_tags(store) == {"found": 0, "tags": []}
+
+
+def test_a_report_takes_every_filter_a_search_does(library):
+    """"Everything tagged linux I have not read" — both halves existed already.
+
+    The report passed five of the ten filters `search` accepts, so the two
+    tools described the same query differently depending on which you asked.
+    """
+    report = tools.library_report(library, tags=["linux"], unread=True)
+
+    assert "A title" in report
+    # `b` carries no tag, so a report narrowed by one must not reach it.
+    assert report.count("## ") == 2
+
+    assert tools.library_report(library, tags=["linux"], unread=False) == (
+        "# Library report\n\nNothing matched.\n"
+    )
+
+
+def test_a_report_over_nothing_says_so(library):
+    # It used to be a heading, a count of zero and an empty table — a document
+    # that has to be read before it admits it holds nothing.
+    assert tools.library_report(library, tags=["absent"]) == (
+        "# Library report\n\nNothing matched.\n"
+    )
+    # The machine formats are already unambiguous when empty.
+    assert tools.library_report(library, tags=["absent"], fmt="json") == "[]"
