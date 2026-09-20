@@ -4,6 +4,21 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
+## Unreleased
+
+### The tags are visible now
+
+Search could always be narrowed by tag, but nothing anywhere said what the
+tags were, and no article that came back said what it was filed under — so the
+one filter built on a vocabulary could only be used by somebody who already
+knew the words.
+
+There is a new **list_tags**, which is every tag in the library with the number
+of articles each one reaches, a feed's tags counting towards the articles in it
+exactly as search matches them. And every article returned — by a search, by
+the recent list, by reading one in full — now carries its tags, so the
+vocabulary can be learnt from an answer rather than asked for separately.
+
 ## 0.6.0
 
 ### Settings reach a running server

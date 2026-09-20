@@ -311,6 +311,58 @@ class Store:
         )
         return [(row["name"], row["n"]) for row in rows]
 
+    def tags(self) -> list[tuple[str, int]]:
+        """Every tag in the library, and how many items each one reaches.
+
+        The count is items rather than rows, and a feed's tags count towards
+        the articles in it — because that is what `search` matches on, and a
+        list that counted differently would offer a number which did not
+        survive being searched for. The UNION does the dedicating: an item
+        carrying `linux` itself and sitting in a feed tagged `linux` is one
+        item, once.
+        """
+        rows = self._db.execute(
+            """
+            SELECT tag, COUNT(*) AS n FROM (
+              SELECT item_id, tag FROM item_tags
+              UNION
+              SELECT ic.item_id, ct.tag
+              FROM item_channels ic
+              JOIN channel_tags ct ON ct.channel_id = ic.channel_id
+            )
+            GROUP BY tag ORDER BY n DESC, tag
+            """
+        )
+        return [(row["tag"], row["n"]) for row in rows]
+
+    def tags_of(self, item_ids: Iterable[str]) -> dict[str, list[str]]:
+        """The tags on each of these items, in one query rather than one each.
+
+        Called with a whole page of search results, which on a limit of a
+        hundred is the difference between one round trip and a hundred. Same
+        reach as `tags`: the item's own tags and its feeds'.
+        """
+        ids = list(item_ids)
+        if not ids:
+            return {}
+        marks = ",".join("?" * len(ids))
+        rows = self._db.execute(
+            f"""
+            SELECT item_id, tag FROM item_tags WHERE item_id IN ({marks})
+            UNION
+            SELECT ic.item_id, ct.tag
+            FROM item_channels ic
+            JOIN channel_tags ct ON ct.channel_id = ic.channel_id
+            WHERE ic.item_id IN ({marks})
+            ORDER BY tag
+            """,
+            [*ids, *ids],
+        )
+        found: dict[str, list[str]] = {}
+        for row in rows:
+            found.setdefault(row["item_id"], []).append(row["tag"])
+        return found
+
     def counts(self) -> dict[str, int]:
         rows = self._db.execute(
             """

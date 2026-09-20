@@ -174,6 +174,18 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
         return tools.recent_items(store, limit=limit)
 
     @server.tool(
+        name="list_tags",
+        description=(
+            "Every tag in the library, with the number of articles each one "
+            "reaches — a feed's tags counting towards the articles in it, the "
+            "same way search_library matches them. The vocabulary to pick "
+            "`tags` from, rather than guessing at slugs."
+        ),
+    )
+    def list_tags() -> dict:
+        return tools.list_tags(store)
+
+    @server.tool(
         name="library_summary",
         description=(
             "How much the library holds: articles, unread, summarized, sources, "
