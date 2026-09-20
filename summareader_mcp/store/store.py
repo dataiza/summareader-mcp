@@ -317,7 +317,7 @@ class Store:
         The count is items rather than rows, and a feed's tags count towards
         the articles in it — because that is what `search` matches on, and a
         list that counted differently would offer a number which did not
-        survive being searched for. The UNION does the dedicating: an item
+        survive being searched for. The UNION is what deduplicates: an item
         carrying `linux` itself and sitting in a feed tagged `linux` is one
         item, once.
         """
