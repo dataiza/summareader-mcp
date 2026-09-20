@@ -119,13 +119,27 @@ def search_library(
     return {
         "query": query,
         "found": len(items),
-        "items": [_item(i) for i in items],
+        "items": _items(store, items),
     }
 
 
 def recent_items(store: Store, limit: int = 20) -> dict[str, Any]:
     items = store.recent(limit=max(1, min(limit, 100)))
-    return {"found": len(items), "items": [_item(i) for i in items]}
+    return {"found": len(items), "items": _items(store, items)}
+
+
+def list_tags(store: Store) -> dict[str, Any]:
+    """The whole vocabulary, so `tags` is a filter something can actually use.
+
+    Not folded into `library_summary`, which caps its sources at ten: a
+    vocabulary truncated to ten is worse than none, because what is missing is
+    invisible and gets searched for anyway.
+    """
+    found = store.tags()
+    return {
+        "found": len(found),
+        "tags": [{"tag": tag, "items": n} for tag, n in found],
+    }
 
 
 def library_summary(store: Store) -> dict[str, Any]:
@@ -148,7 +162,8 @@ def read_item(store: Store, item_id: str) -> dict[str, Any]:
     item = store.item(item_id)
     if item is None:
         return {"found": False, "id": item_id}
-    return {"found": True, **_item(item), "text": store.body(item_id)}
+    tags = store.tags_of([item_id]).get(item_id, [])
+    return {"found": True, **_item(item, tags), "text": store.body(item_id)}
 
 
 def library_report(
@@ -159,22 +174,49 @@ def library_report(
     source: str | None = None,
     since: datetime | None = None,
     until: datetime | None = None,
+    read_since: datetime | None = None,
+    read_until: datetime | None = None,
+    unread: bool | None = None,
+    summarized: bool | None = None,
+    tags: list[str] | None = None,
     fmt: str = "md",
     limit: int = 50,
 ) -> str:
+    """The same query as `search_library`, written out instead of returned.
+
+    Every filter, then, and under the same names: the two are one question
+    asked twice, and a report that could not be narrowed by tag or by unread
+    made "everything tagged rust I have not read" unaskable although both
+    halves of it existed.
+    """
     items = store.search(
         query,
         title=title,
         source=source,
         since=since,
         until=until,
+        read_since=read_since,
+        read_until=read_until,
+        unread=unread,
+        summarized=summarized,
+        tags=tags,
         limit=max(1, min(limit, 500)),
     )
-    title = "Library report" if not query else f"Library report — {query}"
-    return render(items, fmt, title=title)
+    heading = "Library report" if not query else f"Library report — {query}"
+    return render(items, fmt, title=heading)
 
 
-def _item(item) -> dict[str, Any]:
+def _items(store: Store, items: list) -> list[dict[str, Any]]:
+    """A page of results with their tags, at one query for the page.
+
+    `_item` runs per row, so asking the store per row would be a hundred round
+    trips on a limit of a hundred — for a few slugs.
+    """
+    tags = store.tags_of([i.id for i in items])
+    return [_item(i, tags.get(i.id, [])) for i in items]
+
+
+def _item(item, tags: list[str] | None = None) -> dict[str, Any]:
     return {
         "id": item.id,
         "title": item.title,
@@ -188,4 +230,8 @@ def _item(item) -> dict[str, Any]:
             [p.text for p in item.summary.points] if item.summary else []
         ),
         "words": item.words,
+        # Both directions of the same fact: a model that can filter by tag can
+        # now also learn one from an answer, rather than having to guess a slug
+        # it was never shown.
+        "tags": tags or [],
     }

@@ -174,6 +174,18 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
         return tools.recent_items(store, limit=limit)
 
     @server.tool(
+        name="list_tags",
+        description=(
+            "Every tag in the library, with the number of articles each one "
+            "reaches — a feed's tags counting towards the articles in it, the "
+            "same way search_library matches them. The vocabulary to pick "
+            "`tags` from, rather than guessing at slugs."
+        ),
+    )
+    def list_tags() -> dict:
+        return tools.list_tags(store)
+
+    @server.tool(
         name="library_summary",
         description=(
             "How much the library holds: articles, unread, summarized, sources, "
@@ -197,7 +209,12 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
         name="library_report",
         description=(
             "A written report over a set of articles, as Markdown, CSV or JSON. "
-            "`since` narrows by age: 3h, 7d, 3w, or a date like 2026-08-01."
+            "Narrowed exactly as search_library is: `query`, `title` and "
+            "`source` match words, `since`/`until` bound when an article was "
+            "published and `read_since`/`read_until` when it was read — each "
+            "takes 3h, 7d, 3w, or a date like 2026-08-01. `tags` matches an "
+            "article's own tags or the tags of the feed it came from, and "
+            "several narrow rather than widen."
         ),
     )
     def library_report(
@@ -206,6 +223,11 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
         source: str | None = None,
         since: str | None = None,
         until: str | None = None,
+        read_since: str | None = None,
+        read_until: str | None = None,
+        unread: bool | None = None,
+        summarized: bool | None = None,
+        tags: list[str] | None = None,
         fmt: str = "md",
         limit: int = 50,
     ) -> str:
@@ -216,6 +238,11 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
             source=source,
             since=parse_since(since),
             until=parse_since(until),
+            read_since=parse_since(read_since),
+            read_until=parse_since(read_until),
+            unread=unread,
+            summarized=summarized,
+            tags=tags,
             fmt=fmt,
             limit=limit,
         )
