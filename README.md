@@ -30,7 +30,6 @@ Built releases are on this repository's [Releases](../../releases/latest) page.
 | | For | File |
 |---|---|---|
 | **Console, Linux** | a desktop, with a window | `SummaReaderMCP-<version>-x86_64.AppImage` |
-| **Console, macOS** | a Mac, with a window | `summareader-mcp-console-macos.zip` |
 | **Headless** | a server an MCP client reaches over HTTP | `summareader-mcp-headless-<os>-<arch>.tar.gz` |
 | Console, Linux, unpacked | packaging it yourself | `summareader-mcp-console-linux-x64.tar.gz` |
 
@@ -136,7 +135,6 @@ The desktop window, carrying its own copy of the server.
 tar -xzf summareader-mcp-console-linux-x64.tar.gz
 ./summareader-mcp-console/summareader_mcp_console
 
-# macOS: summareader-mcp-console-macos.zip — unzip and open the .app
 ```
 
 ### Docker
