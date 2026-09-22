@@ -122,6 +122,11 @@ def open_store(path: Path | str, *, read_only: bool = False) -> Store:
         held = {row["name"] for row in connection.execute("PRAGMA table_info(items)")}
         if "read_at" not in held:
             connection.execute("ALTER TABLE items ADD COLUMN read_at INTEGER")
+        on_channels = {
+            row["name"] for row in connection.execute("PRAGMA table_info(channels)")
+        }
+        if "group_id" not in on_channels:
+            connection.execute("ALTER TABLE channels ADD COLUMN group_id TEXT")
         connection.commit()
     return Store(_Locked(connection), read_only=read_only)
 
@@ -191,6 +196,7 @@ class Store:
         unread: bool | None = None,
         summarized: bool | None = None,
         tags: Iterable[str] | None = None,
+        groups: Iterable[str] | None = None,
         limit: int = 20,
     ) -> list[Item]:
         """Everything matching, newest first.
@@ -259,6 +265,29 @@ class Store:
             )
             args += [tag, tag]
 
+        # ⛔ Several groups mean *or*, where several tags mean *and*.
+        #
+        # Not an inconsistency: a source belongs to at most one group, so
+        # asking for two as an `and` asks for a source that is in both, which
+        # no source ever is. Tags are many-to-many and narrowing by two is a
+        # question with answers. The tool description says this, because a
+        # model cannot guess it.
+        wanted_groups = sorted(
+            {g.strip() for g in (groups or ()) if isinstance(g, str) and g.strip()}
+        )
+        if wanted_groups:
+            marks = ",".join("?" for _ in wanted_groups)
+            where.append(
+                "EXISTS (SELECT 1 FROM item_channels ic"
+                "          JOIN channels c ON c.id = ic.channel_id"
+                "         WHERE ic.item_id = i.id"
+                f"          AND (c.group_id IN ({marks})"
+                f"               OR EXISTS (SELECT 1 FROM source_groups g"
+                f"                           WHERE g.id = c.group_id"
+                f"                             AND g.title IN ({marks}))))"
+            )
+            args += wanted_groups + wanted_groups
+
         sql = f"""
             SELECT i.id, i.title, i.canonical_url, i.published_at, i.fetched_at,
                    i.read, i.read_at, src.name AS source, s.text AS summary,
@@ -310,6 +339,42 @@ class Store:
             """
         )
         return [(row["name"], row["n"]) for row in rows]
+
+    def groups(self) -> list[dict[str, Any]]:
+        """Every group, with what it holds.
+
+        Two counts, because they answer different questions: how many sources
+        are filed here, and how many articles that reaches. A group of one
+        busy feed and a group of twenty quiet ones look the same by the first
+        number and nothing alike by the second.
+
+        Ungrouped is not listed. It has no row — it is what a null `group_id`
+        means — and inventing one here would put a heading in a list of
+        headings that the app does not have.
+        """
+        rows = self._db.execute(
+            """
+            SELECT g.id, g.kind, g.title,
+                   (SELECT COUNT(*) FROM channels c WHERE c.group_id = g.id)
+                     AS sources,
+                   (SELECT COUNT(DISTINCT ic.item_id)
+                      FROM item_channels ic
+                      JOIN channels c ON c.id = ic.channel_id
+                     WHERE c.group_id = g.id) AS items
+            FROM source_groups g
+            ORDER BY items DESC, g.title
+            """
+        )
+        return [
+            {
+                "id": row["id"],
+                "title": row["title"],
+                "kind": row["kind"],
+                "sources": row["sources"],
+                "items": row["items"],
+            }
+            for row in rows
+        ]
 
     def tags(self) -> list[tuple[str, int]]:
         """Every tag in the library, and how many items each one reaches.
@@ -413,6 +478,7 @@ class Store:
             LogOp.IMAGE: self._apply_blob_pointer("image_blob"),
             LogOp.TOMBSTONE: self._apply_tombstone,
             LogOp.SOURCE: self._apply_source,
+            LogOp.GROUP: self._apply_group,
         }.get(record.op)
         return bool(handler and handler(record))
 
@@ -549,19 +615,69 @@ class Store:
         return True
 
     def _apply_source(self, record: LogRecord) -> bool:
-        """A source's tags, as a whole set.
+        """A source's tags, and which group it is in.
+
+        Two independent statements under one op, and a record carries
+        whichever was edited — so each is applied on its own and neither
+        reports "nothing happened" over the other.
 
         A channel this mirror has never heard of is skipped rather than
         created: a label is not a reason to learn about a feed, and item
         records are what introduce one.
         """
-        stated = record.data.get("tags")
-        if not isinstance(stated, list):
-            return False
         known = self._db.execute("SELECT 1 FROM channels WHERE id = ?", [record.id])
         if not known:
             return False
-        self._write_tags("channel_tags", "channel_id", record.id, stated)
+
+        changed = False
+        # Present and null is a real answer — it means Ungrouped — so this
+        # asks whether the field was stated rather than whether it is set.
+        if "group" in record.data:
+            group = record.data.get("group")
+            self._db.execute(
+                "UPDATE channels SET group_id = ? WHERE id = ?",
+                [group if isinstance(group, str) else None, record.id],
+            )
+            changed = True
+
+        stated = record.data.get("tags")
+        if isinstance(stated, list):
+            self._write_tags("channel_tags", "channel_id", record.id, stated)
+            changed = True
+        return changed
+
+    def _apply_group(self, record: LogRecord) -> bool:
+        """A group of sources: its title and kind, or its removal.
+
+        Unlike a source, a group *is* created on arrival — it is the whole
+        content of the record rather than a label on something else, and the
+        app pushes groups before the sources that name them.
+
+        That ordering only holds within one push, though, which is why
+        nothing here refuses a source naming a group that has not arrived:
+        `group_id` is not a foreign key, and such a source reads as ungrouped
+        until the group turns up.
+        """
+        if record.data.get("gone") is True:
+            # The heading goes; what was under it stays, ungrouped. Deleting
+            # the sources would be reading "this shelf is gone" as "burn what
+            # was on it".
+            self._db.execute(
+                "UPDATE channels SET group_id = NULL WHERE group_id = ?", [record.id]
+            )
+            self._db.execute("DELETE FROM source_groups WHERE id = ?", [record.id])
+            return True
+
+        title = record.data.get("title")
+        kind = record.data.get("kind")
+        if not isinstance(title, str) or not isinstance(kind, str):
+            return False
+        self._db.execute(
+            "INSERT INTO source_groups (id, kind, title) VALUES (?,?,?) "
+            "ON CONFLICT(id) DO UPDATE SET title = excluded.title, "
+            "kind = excluded.kind",
+            [record.id, kind, title],
+        )
         return True
 
     def _write_tags(

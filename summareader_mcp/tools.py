@@ -101,6 +101,7 @@ def search_library(
     unread: bool | None = None,
     summarized: bool | None = None,
     tags: list[str] | None = None,
+    groups: list[str] | None = None,
     limit: int = 20,
 ) -> dict[str, Any]:
     items = store.search(
@@ -114,6 +115,7 @@ def search_library(
         unread=unread,
         summarized=summarized,
         tags=tags,
+        groups=groups,
         limit=max(1, min(limit, 100)),
     )
     return {
@@ -126,6 +128,21 @@ def search_library(
 def recent_items(store: Store, limit: int = 20) -> dict[str, Any]:
     items = store.recent(limit=max(1, min(limit, 100)))
     return {"found": len(items), "items": _items(store, items)}
+
+
+def list_groups(store: Store) -> dict[str, Any]:
+    """The groups sources are filed in, so `groups` is a filter worth using.
+
+    The same relationship `list_tags` has to `tags`: one names the vocabulary
+    and the other narrows by it. Both a group's title and its id are accepted
+    by that filter, because a title is what somebody reading this will type
+    back and an id is what a machine will.
+
+    Ungrouped is absent. It is what a source with no group *is*, not a group,
+    and it has no row here or in the app.
+    """
+    found = store.groups()
+    return {"found": len(found), "groups": found}
 
 
 def list_tags(store: Store) -> dict[str, Any]:
@@ -179,6 +196,7 @@ def library_report(
     unread: bool | None = None,
     summarized: bool | None = None,
     tags: list[str] | None = None,
+    groups: list[str] | None = None,
     fmt: str = "md",
     limit: int = 50,
 ) -> str:
@@ -200,6 +218,7 @@ def library_report(
         unread=unread,
         summarized=summarized,
         tags=tags,
+        groups=groups,
         limit=max(1, min(limit, 500)),
     )
     heading = "Library report" if not query else f"Library report — {query}"

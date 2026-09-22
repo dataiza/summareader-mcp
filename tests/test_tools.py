@@ -130,3 +130,29 @@ def test_a_report_over_nothing_says_so(library):
     )
     # The machine formats are already unambiguous when empty.
     assert tools.library_report(library, tags=["absent"], fmt="json") == "[]"
+
+
+def test_list_groups_names_the_vocabulary_groups_narrows_by(library):
+    """The relationship list_tags has to `tags`, for the other filter."""
+    from summareader_mcp.protocol.records import LogOp, LogRecord
+
+    library.apply_all(
+        [
+            LogRecord(
+                op=LogOp.GROUP,
+                id="g1",
+                data={"title": "Work", "kind": "rss"},
+            )
+        ]
+    )
+
+    listed = tools.list_groups(library)
+
+    assert listed["found"] == 1
+    assert listed["groups"][0]["title"] == "Work"
+    # Both counts, because they answer different questions.
+    assert set(listed["groups"][0]) == {"id", "title", "kind", "sources", "items"}
+
+
+def test_an_empty_library_has_no_groups(store):
+    assert tools.list_groups(store) == {"found": 0, "groups": []}

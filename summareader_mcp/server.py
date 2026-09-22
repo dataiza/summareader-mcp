@@ -135,7 +135,10 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
             "was published and `read_since`/`read_until` when it was read — "
             "each takes 3h, 7d, 3w, or a date like 2026-08-01. `tags` matches "
             "an article's own tags or the tags of the feed it came from, and "
-            "several narrow rather than widen. Newest first."
+            "several narrow rather than widen. `groups` matches the group a "
+            "source is filed under, by title or id — and several *widen*, "
+            "because a source is in at most one group, so asking for two as "
+            "an `and` asks for something that cannot exist. Newest first."
         ),
     )
     def search_library(
@@ -149,6 +152,7 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
         unread: bool | None = None,
         summarized: bool | None = None,
         tags: list[str] | None = None,
+        groups: list[str] | None = None,
         limit: int = 20,
     ) -> dict:
         return tools.search_library(
@@ -163,6 +167,7 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
             unread=unread,
             summarized=summarized,
             tags=tags,
+            groups=groups,
             limit=limit,
         )
 
@@ -184,6 +189,19 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
     )
     def list_tags() -> dict:
         return tools.list_tags(store)
+
+    @server.tool(
+        name="list_groups",
+        description=(
+            "The groups sources are filed in, each with how many sources it "
+            "holds and how many articles that reaches. The vocabulary to pick "
+            "`groups` from. A source is in at most one group, and sources in "
+            "none are simply absent from this list rather than under an "
+            "Ungrouped heading."
+        ),
+    )
+    def list_groups() -> dict:
+        return tools.list_groups(store)
 
     @server.tool(
         name="library_summary",
@@ -214,7 +232,8 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
             "published and `read_since`/`read_until` when it was read — each "
             "takes 3h, 7d, 3w, or a date like 2026-08-01. `tags` matches an "
             "article's own tags or the tags of the feed it came from, and "
-            "several narrow rather than widen."
+            "several narrow rather than widen. `groups` matches the group a "
+            "source is filed under, by title or id, and several widen."
         ),
     )
     def library_report(
@@ -228,6 +247,7 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
         unread: bool | None = None,
         summarized: bool | None = None,
         tags: list[str] | None = None,
+        groups: list[str] | None = None,
         fmt: str = "md",
         limit: int = 50,
     ) -> str:
@@ -243,6 +263,7 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
             unread=unread,
             summarized=summarized,
             tags=tags,
+            groups=groups,
             fmt=fmt,
             limit=limit,
         )

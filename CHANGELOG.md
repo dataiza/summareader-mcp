@@ -4,6 +4,27 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
+## Unreleased
+
+### It knows what a group is
+
+The app files sources in groups and sync has carried that all along, but this
+server had never been taught the word: the record was skipped — which is what
+it is meant to do with anything it does not recognise — so a model reading the
+library saw a flat list of sources the reader had stopped seeing.
+
+Groups arrive now, and there is a **list_groups**: every group with how many
+sources it holds and how many articles that reaches. **search_library** and
+**library_report** both take a `groups` filter, by title or by id.
+
+One asymmetry worth knowing, and the tool descriptions say it: several tags
+*narrow*, and several groups *widen*. A source is in at most one group, so
+asking for two as an `and` would ask for something that cannot exist.
+
+A group whose sources have not arrived yet, or a source naming a group that
+has not, is not an error — the source is simply ungrouped until the rest
+catches up.
+
 ## 0.7.0
 
 ### The tags are visible now
