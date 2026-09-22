@@ -331,3 +331,139 @@ def test_a_source_nobody_here_knows_is_skipped(store) -> None:
     applied = store.apply(LogRecord(op="source", id="unknown", data={"tags": ["x"]}))
 
     assert applied is False
+
+
+class TestGroups:
+    """Sources filed in groups, which the app syncs and this used to drop.
+
+    The record's op is `group`, and an unknown op is skipped rather than
+    failed — so nothing was broken, nobody had taught it the word, and a
+    model reading the library saw a flat list of sources the reader stopped
+    seeing weeks ago.
+    """
+
+    @staticmethod
+    def group(id="g1", title="Work", kind="rss", **data):
+        return LogRecord(
+            op=LogOp.GROUP,
+            id=id,
+            data={"title": title, "kind": kind, "edited": "2026-09-22T10:00:00.000Z", **data},
+        )
+
+    @staticmethod
+    def files(channel="ch1", group="g1"):
+        """The other half: which group a source is in rides on its own record."""
+        return LogRecord(op=LogOp.SOURCE, id=channel, data={"group": group})
+
+    def test_a_group_arrives_and_says_what_it_holds(self, store):
+        store.apply_all([item(), self.group(), self.files()])
+
+        found = store.groups()
+
+        assert found == [
+            {"id": "g1", "title": "Work", "kind": "rss", "sources": 1, "items": 1}
+        ]
+
+    def test_a_renamed_group_is_renamed_here_too(self, store):
+        store.apply_all([item(), self.group(), self.files()])
+
+        store.apply_all([self.group(title="Office")])
+
+        assert store.groups()[0]["title"] == "Office"
+
+    def test_a_removed_group_takes_the_heading_and_not_the_sources(self, store):
+        store.apply_all([item(), self.group(), self.files()])
+
+        store.apply_all([self.group(gone=True)])
+
+        assert store.groups() == []
+        # The articles are still here and still under their feed. Reading
+        # "this shelf is gone" as "burn what was on it" is the failure.
+        assert len(store.recent()) == 1
+        assert store.recent()[0].source == "A Feed"
+
+    def test_a_source_naming_a_group_that_has_not_arrived_is_ungrouped(self, store):
+        # The app pushes groups before the sources that name them, but only
+        # within one push — across pushes this order is exactly what happens,
+        # and it must not drop the source.
+        store.apply_all([item(), self.files(group="later")])
+
+        assert store.groups() == []
+        assert len(store.recent()) == 1
+
+        store.apply_all([self.group(id="later", title="Later")])
+        assert store.groups()[0]["sources"] == 1
+
+    def test_a_source_can_be_moved_back_out_of_every_group(self, store):
+        # Present and null is a real answer — it means Ungrouped — so the
+        # field is read by whether it was stated, not by whether it is set.
+        store.apply_all([item(), self.group(), self.files()])
+
+        store.apply_all([LogRecord(op=LogOp.SOURCE, id="ch1", data={"group": None})])
+
+        assert store.groups()[0]["sources"] == 0
+
+    def test_tags_and_a_group_in_one_record_both_apply(self, store):
+        # Two independent statements under one op; a record carries whichever
+        # was edited, and neither may report nothing over the other.
+        store.apply_all([item(), self.group()])
+
+        store.apply_all(
+            [LogRecord(op=LogOp.SOURCE, id="ch1", data={"group": "g1", "tags": ["moto"]})]
+        )
+
+        assert store.groups()[0]["sources"] == 1
+        assert store.tags() == [("moto", 1)]
+
+
+class TestSearchingByGroup:
+    def _library(self, store):
+        store.apply_all(
+            [
+                item(id="a"),
+                item(
+                    id="b",
+                    title="Something else",
+                    channels=[
+                        {"id": "ch2", "kind": "rss", "url": "https://g.example",
+                         "title": "Another Feed"}
+                    ],
+                ),
+                TestGroups.group(id="g1", title="Work"),
+                TestGroups.group(id="g2", title="Home"),
+                TestGroups.files(channel="ch1", group="g1"),
+                TestGroups.files(channel="ch2", group="g2"),
+            ]
+        )
+
+    def test_by_title_and_by_id_alike(self, store):
+        # A title is what somebody reading list_groups types back; an id is
+        # what a machine passes on.
+        self._library(store)
+
+        assert [i.id for i in store.search(groups=["Work"])] == ["a"]
+        assert [i.id for i in store.search(groups=["g1"])] == ["a"]
+
+    def test_several_groups_widen_where_several_tags_narrow(self, store):
+        # ⛔ The asymmetry a model cannot guess, which is why the tool
+        # description says it: a source is in at most one group, so two as an
+        # `and` would ask for something that cannot exist.
+        self._library(store)
+
+        assert len(store.search(groups=["Work", "Home"])) == 2
+
+    def test_a_group_nothing_is_filed_under_finds_nothing(self, store):
+        self._library(store)
+
+        assert store.search(groups=["Nowhere"]) == []
+
+    def test_it_narrows_alongside_the_other_filters(self, store):
+        # search and library_report took filter parity in 0.7.0; losing it
+        # again for this one would be the same complaint twice.
+        self._library(store)
+
+        assert len(store.search(query="A title", groups=["Work"])) == 1
+        # The same words, the other group: the group is doing the narrowing,
+        # not the query.
+        assert store.search(query="A title", groups=["Home"]) == []
+        assert len(store.search(query="Something else", groups=["Home"])) == 1

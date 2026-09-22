@@ -14,7 +14,23 @@ CREATE TABLE IF NOT EXISTS channels (
   id             TEXT PRIMARY KEY,
   kind           TEXT NOT NULL,
   url            TEXT NOT NULL,
-  title          TEXT
+  title          TEXT,
+  -- Which group it is filed under; null is Ungrouped, which has no row in
+  -- the app either. Deliberately not a foreign key: a source can name a
+  -- group whose own record has not arrived yet, and it is ungrouped until
+  -- it does rather than refused.
+  group_id       TEXT
+);
+
+-- The groups sources are filed in. No row for Ungrouped: it is what a null
+-- group_id means, and it exists on every device by definition.
+--
+-- The account a group names is *not* here. It is a label for a set of
+-- sign-ins on the device that made it, and this mirror fetches nothing.
+CREATE TABLE IF NOT EXISTS source_groups (
+  id             TEXT PRIMARY KEY,
+  kind           TEXT NOT NULL,
+  title          TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS items (

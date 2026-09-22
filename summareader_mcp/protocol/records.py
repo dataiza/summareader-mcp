@@ -33,8 +33,12 @@ class LogOp:
     #: channel that is not nested inside an item.
     SOURCE = "source"
 
+    #: A group of sources: its title, its kind, and whether it still exists.
+    #: Which group a *source* is in rides on SOURCE, the way its tags do.
+    GROUP = "group"
+
     KNOWN = frozenset(
-        {ITEM, SUMMARY, ANNOTATION, READ, TOMBSTONE, TEXT, IMAGE, SOURCE}
+        {ITEM, SUMMARY, ANNOTATION, READ, TOMBSTONE, TEXT, IMAGE, SOURCE, GROUP}
     )
 
 
