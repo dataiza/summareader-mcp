@@ -170,6 +170,14 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
     // none until this widget is in a tree. Only when nothing named a location:
     // a `cache_dir`, SUMMAREADER_MCP_CACHE or a library all mean the question
     // is already answered.
+    // Once on launch and then daily, and only when it was switched on. This
+    // console serves a model rather than a person, so nobody is looking at it
+    // to press a button.
+    if (_config.autoUpdate && runningImage(widget.environment) != null) {
+      _autoUpdateTimer = Timer.periodic(_autoUpdateEvery, (_) => _autoUpdate());
+      unawaited(_autoUpdate());
+    }
+
     if (!_config.saidWhere) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _askWhereToPutIt());
     } else {
@@ -254,6 +262,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   @override
   void dispose() {
     _poll?.cancel();
+    _autoUpdateTimer?.cancel();
     _fading.cancel();
     _lifecycle?.dispose();
     _query.dispose();
@@ -521,6 +530,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
         hasToken: _config.bearerToken != null,
         pollSeconds: _config.pollSeconds,
         updatable: runningImage(widget.environment) != null,
+        autoUpdate: _config.autoUpdate,
         updateOffer: _updateOffer,
         updateSaid: _updateSaid,
         updateInstalled: _updateInstalled,
@@ -554,6 +564,7 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
       // vanished until it was would be a setting nobody could find.
       onAutostart: _config.fromAFile && _local ? _setAutostart : null,
       onGenerateToken: _config.fromAFile ? _generateToken : null,
+      onAutoUpdate: _setAutoUpdate,
       onCheckUpdates: _checkUpdates,
       onDownloadUpdate: _downloadUpdate,
       onDismissUpdate: () => setState(() => _updateOffer = null),
@@ -598,6 +609,48 @@ class _ConsoleScreenState extends State<ConsoleScreen> {
   /// Replacing the program somebody is running is the one control here that
   /// changes this program, and it used to happen because they pressed
   /// "check". Now it is a sentence and two buttons.
+  /// How often the automatic check asks, once it has asked on launch.
+  ///
+  /// Daily rather than hourly: a release is not a thing that happens between
+  /// breakfast and lunch, and a console that polls GitHub all day is a window
+  /// talking to the network for no reason.
+  static const _autoUpdateEvery = Duration(hours: 24);
+
+  Timer? _autoUpdateTimer;
+
+  /// Looks for a release and installs what it finds, without being asked.
+  ///
+  /// **Downloaded now, applied next launch.** `replaceRunningImage` renames
+  /// the new file over the old one and the kernel holds the running inode, so
+  /// the console somebody has open carries on — it simply says a new version
+  /// is in place, and *Restart now* is there when they want it. There is no
+  /// supervised service on this side, so restarting the console is the whole
+  /// of the update.
+  ///
+  /// A failure says nothing. Nobody asked, so nobody is waiting for an
+  /// answer, and a machine with no network is the ordinary case rather than
+  /// a fault worth putting on a screen. The button still reports everything.
+  Future<void> _autoUpdate() async {
+    if (!_config.autoUpdate) return;
+    if (runningImage(widget.environment) == null) return;
+    try {
+      final found = await GitHubUpdates(client: widget.client).newer();
+      if (found == null || !mounted) return;
+      await _downloadUpdate(found);
+    } on Object {
+      // Deliberately quiet — see above.
+    }
+  }
+
+  void _setAutoUpdate(bool on) {
+    _config.saveAutoUpdate(on: on);
+    setState(() => _config = widget.options.configuration);
+    _autoUpdateTimer?.cancel();
+    if (!on) return;
+    _autoUpdateTimer = Timer.periodic(_autoUpdateEvery, (_) => _autoUpdate());
+    unawaited(_autoUpdate());
+  }
+
   Future<void> _checkUpdates() async {
     setState(() {
       _updateOffer = null;

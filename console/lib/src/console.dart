@@ -46,6 +46,7 @@ class ConsoleState {
     this.hasToken = false,
     this.pollSeconds = 300,
     this.updatable = false,
+    this.autoUpdate = false,
   });
 
   /// "Running on http://…" or "Not running — …", already worded.
@@ -95,6 +96,9 @@ class ConsoleState {
   /// would act on something nobody chose.
   final bool updatable;
 
+  /// Whether the console looks for a release on its own.
+  final bool autoUpdate;
+
   /// The library on screen, and whether this mirror fills it or merely reads
   /// one somebody else fills.
   final String libraryPath;
@@ -133,6 +137,7 @@ class ConsoleView extends StatefulWidget {
     this.onSyncing,
     this.onAutostart,
     this.onGenerateToken,
+    this.onAutoUpdate,
     this.onCheckUpdates,
     this.onDownloadUpdate,
     this.onDismissUpdate,
@@ -190,6 +195,7 @@ class ConsoleView extends StatefulWidget {
 
   /// Asked for by a press. Absent unless this is an AppImage — see
   /// [ConsoleState.updatable].
+  final ValueChanged<bool>? onAutoUpdate;
   final VoidCallback? onCheckUpdates;
 
   @override
@@ -838,7 +844,7 @@ class _ConsoleViewState extends State<ConsoleView> {
               'anything on its own; with one of them missing nothing starts '
               'and the window says which.',
         ),
-      if (widget.state.updatable) _updates(),
+      if (widget.state.updatable) ...[_updates(), _autoUpdates()],
       // Found, and waiting to be told to go ahead.
       if (widget.state.updateOffer case final offer?)
         _row(
@@ -897,6 +903,21 @@ class _ConsoleViewState extends State<ConsoleView> {
     hint:
         'Asks GitHub for the newest release and replaces this AppImage with '
         'it. Nothing is checked until you press it.',
+  );
+
+  /// The same thing without being asked, for a console that serves a model
+  /// rather than a person and is therefore looked at by nobody.
+  Widget _autoUpdates() => _row(
+    'Keep it up to date',
+    ArSwitch(
+      value: widget.state.autoUpdate,
+      label: 'Keep it up to date',
+      onChanged: widget.onAutoUpdate,
+    ),
+    hint:
+        'Looks once when this opens and then daily, and puts what it finds in '
+        'place. The copy you have open keeps running; the new one starts when '
+        'you restart it.',
   );
 
   Widget _pair() => _row(

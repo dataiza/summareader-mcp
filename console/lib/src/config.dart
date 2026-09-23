@@ -23,6 +23,7 @@ class MirrorConfig {
     required this.file,
     required this.cacheDir,
     this.saidWhere = true,
+    this.autoUpdate = false,
     this.inMenu,
     this.server,
     this.token,
@@ -92,6 +93,13 @@ class MirrorConfig {
   /// `false` is somebody having said no, and treating that as "not yet" would
   /// make a question asked once into one asked every launch until they give
   /// in.
+  /// Whether the console looks for a new release without being asked.
+  ///
+  /// Off unless switched on. A window that asks the network about itself
+  /// before anybody said so is a window nobody chose — and this one serves a
+  /// model rather than a person, so nobody is looking at it at all.
+  final bool autoUpdate;
+
   final bool? inMenu;
 
   /// False when nothing named a location — no `cache_dir`, no
@@ -173,6 +181,7 @@ class MirrorConfig {
       file: path,
       cacheDir: said ?? defaultCacheDir(env),
       inMenu: menu is bool ? menu : null,
+      autoUpdate: stored['auto_update'] == true,
       // Nothing said where, so nobody has been asked. Reading a `library` key
       // counts too — that is the other way to name a file, and somebody who
       // has named one has answered the question.
@@ -247,6 +256,10 @@ class MirrorConfig {
 
   /// Whether the mirror pulls on its own at all.
   void saveSyncing({required bool on}) => save({'sync': on});
+
+  /// Whether the console keeps itself up to date. Snake case like every
+  /// other key here, because `config.py` reads the same file.
+  void saveAutoUpdate({required bool on}) => save({'auto_update': on});
 
   /// Whether the console starts the mirror as soon as it runs.
   ///
