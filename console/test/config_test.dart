@@ -236,6 +236,35 @@ void main() {
       );
     });
 
+    test('keeping the console up to date is off until it is asked for', () {
+      // A window that asks the network about itself before anybody said so is
+      // a window nobody chose — and this one serves a model, so nobody is
+      // looking at it at all.
+      final file = write(dir, _full);
+
+      expect(
+        MirrorConfig.load(file: file.path, environment: const {}).autoUpdate,
+        isFalse,
+      );
+    });
+
+    test('and switching it on survives, under the name config.py reads', () {
+      final file = write(dir, _full);
+
+      MirrorConfig.load(
+        file: file.path,
+        environment: const {},
+      ).saveAutoUpdate(on: true);
+
+      final after = MirrorConfig.load(file: file.path, environment: const {});
+      expect(after.autoUpdate, isTrue);
+      // Snake case like every other key, because the mirror reads this file.
+      final raw = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+      expect(raw['auto_update'], isTrue);
+      // And the master key is untouched, as with every other write here.
+      expect(after.masterKey, 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=');
+    });
+
     test('writing either leaves the rest of the file alone', () {
       final file = write(dir, _full);
       MirrorConfig.load(file: file.path, environment: const {}).savePoll(120);
