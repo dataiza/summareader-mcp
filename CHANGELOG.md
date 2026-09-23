@@ -4,6 +4,24 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
+## 0.9.0
+
+The console can keep itself up to date. It serves a model rather than a
+person, so nobody is looking at it to press a button — and it updated only
+when pressed, twice. Switched on, which it is not until somebody says so, it
+looks once when it opens and daily after that, downloads what it finds and
+puts it in place.
+
+The window somebody has open carries on. The new image is written over the
+old one while the old one runs, which is safe and looks as though it should
+not be; the page says a new version is in place and *Restart now* is there
+when it suits. Restarting the console is the whole of the update here —
+nothing else is being supervised.
+
+A check that fails says nothing. Nobody asked, so nobody is waiting for an
+answer, and a machine with no network is the ordinary case rather than a
+fault worth reporting.
+
 ## 0.8.0
 
 ### It knows what a group is
