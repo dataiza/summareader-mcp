@@ -16,6 +16,7 @@ from pathlib import Path
 
 from . import __version__
 from .config import Config, ConfigError, default_config_path
+from .forward import default_handoff, forward, read_handoff
 from .report import render
 from .store import Store, open_store
 from .store.remote import RemoteError, RemoteStore
@@ -114,6 +115,28 @@ def _parser() -> argparse.ArgumentParser:
     ui = sub.add_parser("ui", help="the terminal interface")
     ui.set_defaults(run=_ui)
 
+    # The app is a window, and a desktop MCP client wants a command. This is
+    # that command: it serves nothing itself, it carries frames to the door the
+    # app opens. Shipped from here rather than as a binary beside the app
+    # because a pip install reaches every platform without a signing identity.
+    forward = sub.add_parser(
+        "forward",
+        help="speak MCP on stdin/stdout and forward it to a running SummaReader app",
+    )
+    forward.add_argument(
+        "--handoff",
+        metavar="FILE",
+        help=f"where the app writes its port and token "
+        f"(default: {default_handoff()})",
+    )
+    forward.add_argument(
+        "--url",
+        metavar="URL",
+        help="post to this address instead, for a door that is not on this "
+        "machine. Then the token comes from SUMMAREADER_MCP_TOKEN",
+    )
+    forward.set_defaults(run=_forward)
+
     return parser
 
 
@@ -167,6 +190,50 @@ def _report(args) -> int:
     else:
         print(text, end="")
     return 0
+
+
+def _forward(args) -> int:
+    """Carry stdin to the app's door and its answers back.
+
+    Nothing here touches a library, a config file or a key: a forwarder that
+    read any of them would be a second place they can drift from the app's.
+    """
+    if args.url:
+        # A door somewhere else — a machine on the desk, a container. There is
+        # no handoff file to read on this side, so the token has to be handed
+        # over, and an environment variable is the one way that keeps it out of
+        # the client's config file and out of `ps`.
+        token = os.environ.get("SUMMAREADER_MCP_TOKEN", "")
+        if not token:
+            print(
+                "summareader-mcp: --url needs SUMMAREADER_MCP_TOKEN set to the "
+                "door's token.",
+                file=sys.stderr,
+            )
+            return 2
+        url = args.url
+    else:
+        path = Path(args.handoff) if args.handoff else default_handoff()
+        door = read_handoff(path)
+        if door is None:
+            # An ordinary state, not a crash: the reader closed the window, or
+            # has not switched the door on. Name the file, because the next
+            # question is always whether this is even looking in the right
+            # place.
+            print(
+                f"summareader-mcp: SummaReader is not answering — no {path}.\n"
+                f"Open the app and switch on Settings \u2192 Fetching \u2192 "
+                f"Answer a model.",
+                file=sys.stderr,
+            )
+            return 1
+        port, token = door
+        url = f"http://127.0.0.1:{port}/mcp"
+
+    # The raw buffers, not the text streams: stdout is the transport and must
+    # carry exactly the bytes the app answered with, through whatever the
+    # console's encoding happens to be.
+    return forward(url, token, sys.stdin.buffer, sys.stdout.buffer, sys.stderr)
 
 
 def _status(args) -> int:

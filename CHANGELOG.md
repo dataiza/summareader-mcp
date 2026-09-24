@@ -4,6 +4,24 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
+## Unreleased
+
+`summareader-mcp forward` — stdin and stdout on one side, the SummaReader
+app's own MCP door on the other. Most desktop clients are configured with a
+command to run and the app is a window, so there was no way to point one at
+the library the app is holding open; this is the command, and what the client
+gets is the app's tools rather than this mirror's.
+
+It carries frames and nothing else. No config, no keys, no library of its own:
+the port and the token come from the file the app writes beside its library
+while the door is open. A closed window is answered rather than waited on —
+the client is told the app is not running, which is an ordinary state and not
+a fault.
+
+Shipped from here rather than as a second executable beside the app, which
+would have needed signing on macOS and a place in three packages to reach the
+same people a pip install already reaches.
+
 ## 0.9.0
 
 The console can keep itself up to date. It serves a model rather than a
