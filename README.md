@@ -210,6 +210,35 @@ summareader-mcp serve --transport=http --host=0.0.0.0 --port=8100
 - Binds `127.0.0.1` unless `--host`, the environment or the config says
   otherwise.
 
+### Forwarding to the SummaReader app
+
+The app has an MCP door of its own, and it is a window rather than a command —
+which most desktop clients cannot start. `forward` is that command: it reads
+MCP on stdin, posts it to the app's door, and writes the answers back. It
+serves nothing itself, so what the client sees is the app's own tools,
+including the ones that write.
+
+Switch the door on first: **Settings → Fetching → Answer a model**.
+
+```json
+{
+  "command": "/path/to/summareader-mcp",
+  "args": ["forward"]
+}
+```
+
+- No port and no token here: the app writes both to `mcp.json` beside its
+  library when the door opens, and removes it when the door closes.
+  `--handoff FILE` if the library is somewhere unusual.
+- With the app closed it says so and exits rather than hanging, so the client
+  reports a failure instead of waiting.
+- `--url` posts to a door on another machine instead, with the token in
+  `SUMMAREADER_MCP_TOKEN`.
+
+Nothing above is needed for this: no config, no sync server, no keys. It is a
+forwarder, and this repository ships it only because a pip install reaches
+every platform without a signing identity.
+
 ### Command line
 
 ```sh
