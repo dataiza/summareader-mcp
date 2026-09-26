@@ -72,6 +72,7 @@ master key is written without ever being shown.
 | `master_key` | `SUMMAREADER_MASTER_KEY` | the library key, base64, **not** revocable |
 | `name` | `SUMMAREADER_MCP_NAME` | what the app's paired-devices list calls this |
 | `bearer_token` | `SUMMAREADER_MCP_TOKEN` | the credential the HTTP port demands (`http_token` is the old spelling, still read) |
+| `tokens` | — | named tokens, each opening only the tools it lists. Optional; `bearer_token` still opens all of them |
 | `host` | `SUMMAREADER_MCP_HOST` | what `serve --transport=http` binds. `127.0.0.1` by default |
 | `port` | `SUMMAREADER_MCP_PORT` | the port it binds. `8100` by default |
 | `sync` | `SUMMAREADER_MCP_SYNC` | pull on a loop at all. `true` by default; `false` holds what is already here |
@@ -203,12 +204,48 @@ summareader-mcp serve --transport=http --host=0.0.0.0 --port=8100
 ```
 
 - The endpoint is `/mcp`; `/health` answers without a token; `/metrics` is
-  Prometheus text behind the same token as the tools.
+  Prometheus text behind any token the server knows.
 - With `bearer_token` set, callers must send `Authorization: Bearer …`.
   Without one the port serves the whole library in plaintext to anything that
   can reach it, and the server says so at startup.
 - Binds `127.0.0.1` unless `--host`, the environment or the config says
   otherwise.
+
+#### A token per set of tools
+
+`bearer_token` opens all seven tools. `tokens` gives out narrower ones — for
+an agent that may search the library but not read whole articles:
+
+```json
+"tokens": {
+  "search-only": {
+    "token": "…",
+    "tools": ["search_library", "library_summary", "list_tags",
+              "list_groups", "recent_items"]
+  },
+  "reports": { "token": "…", "tools": ["search_library", "library_report"] }
+}
+```
+
+- The tools are `search_library`, `recent_items`, `list_groups`, `list_tags`,
+  `library_summary`, `read_item` and `library_report`. All seven are reads;
+  this server never writes to a library. `read_item` and `library_report` hand
+  back whole article text, the others titles and counts.
+- Leave `tools` out and that token opens all of them. A tool name that does
+  not exist is refused when the file is read, rather than quietly shutting a
+  token out of it.
+- `bearer_token` is untouched and goes on opening everything, so an existing
+  config, unit or compose file needs nothing here. Both kinds work side by
+  side; the two credentials are independent.
+- A token calling a tool it was not given gets an ordinary MCP error back
+  (`… is not open to this token`), not a 401 — it is a known caller asking for
+  something it does not have. An unknown token is still a 401. A narrowed
+  token still *lists* all seven; it is refused when it calls one.
+- `/metrics` is outside this: it is not one of the tools and not an MCP call,
+  and it answers in counts rather than library text, so any token the server
+  knows may read it.
+- `SUMMAREADER_MCP_TOKEN` sets `bearer_token` and nothing else; narrower
+  tokens live in the config file.
 
 ### Forwarding to the SummaReader app
 

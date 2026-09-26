@@ -14,6 +14,23 @@ from typing import Any
 from .report import render
 from .store import Store
 
+#: Every tool the MCP server offers, which is the vocabulary a token's tool
+#: set is written in. Here rather than in server.py because the config file
+#: names them too, and config.py cannot import the server.
+#:
+#: All seven are reads. The line worth drawing is between the ones that hand
+#: back whole articles — `read_item`, `library_report` — and the ones that
+#: hand back titles and counts.
+TOOL_NAMES = frozenset({
+    "search_library",
+    "recent_items",
+    "list_groups",
+    "list_tags",
+    "library_summary",
+    "read_item",
+    "library_report",
+})
+
 _RELATIVE = re.compile(r"^(\d+)([hdwmy])$")
 _HOURS = {"h": 1, "d": 24, "w": 24 * 7, "m": 24 * 30, "y": 24 * 365}
 

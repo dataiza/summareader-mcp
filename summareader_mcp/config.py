@@ -14,6 +14,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from .tools import TOOL_NAMES
+
 NAME = "summareader-mcp"
 
 
@@ -103,6 +105,11 @@ class Config:
     #: `Authorization: Bearer …`. Spelled `http_token` in config files written
     #: before the rename, and still read under that name.
     bearer_token: str | None = None
+    #: Named tokens, each opening the subset of the tools it was given:
+    #: (name, token, tool names). A tuple of tuples rather than a dict so that
+    #: a Config stays frozen and comparable — the sync loop compares whole
+    #: configurations to decide whether the file changed under it.
+    tokens: tuple[tuple[str, str, frozenset[str]], ...] = ()
     fetch_bodies: bool = True
     #: What `serve --transport=http` binds when no flag says otherwise. Here
     #: rather than in the flags alone because the console changes it, and a
@@ -165,6 +172,23 @@ class Config:
         )
 
     @property
+    def tool_tokens(self) -> dict[str, frozenset[str]]:
+        """Every credential this port accepts, and what each one opens.
+
+        A bare `bearer_token` opens all of them. That spelling is documented,
+        it is in every example, and it is in whatever unit or compose file a
+        reader already has — so it keeps meaning what it always meant, and the
+        named tokens are the narrower thing sitting beside it.
+
+        A token that is both the bare one and a named one keeps the named
+        one's subset: the narrower answer is the one somebody typed on purpose.
+        """
+        opens = {token: tools for _, token, tools in self.tokens}
+        if self.bearer_token:
+            opens.setdefault(self.bearer_token, TOOL_NAMES)
+        return opens
+
+    @property
     def reads_a_local_library(self) -> bool:
         return self.library is not None
 
@@ -217,6 +241,15 @@ class Config:
                 library=Path(library),
                 host=pick("host", "SUMMAREADER_MCP_HOST", "127.0.0.1"),
                 port=_number("port", pick("port", "SUMMAREADER_MCP_PORT", "8100")),
+                # Carried here too: a library read in place is still served
+                # over the same port, and this branch used to drop the
+                # credentials on the floor — a `library` config with a
+                # bearer_token in it was an unguarded port.
+                bearer_token=(
+                    pick("bearer_token", "SUMMAREADER_MCP_TOKEN")
+                    or pick("http_token", "SUMMAREADER_MCP_TOKEN")
+                ),
+                tokens=_tokens(stored.get("tokens")),
                 source=path,
             )
 
@@ -255,6 +288,7 @@ class Config:
                 pick("bearer_token", "SUMMAREADER_MCP_TOKEN")
                 or pick("http_token", "SUMMAREADER_MCP_TOKEN")
             ),
+            tokens=_tokens(stored.get("tokens")),
             fetch_bodies=(pick("fetch_bodies", "SUMMAREADER_MCP_BODIES", "true") or "")
             .lower()
             not in ("false", "0", "no"),
@@ -267,6 +301,53 @@ class Config:
             ),
             source=path,
         )
+
+
+def _tokens(stored) -> tuple[tuple[str, str, frozenset[str]], ...]:
+    """The `tokens` object in the config file: a name to a token and its tools.
+
+        "tokens": {
+          "search-only": {"token": "…", "tools": ["search_library", "list_tags"]}
+        }
+
+    `tools` left out means all of them, which is the bare `bearer_token` under
+    a name. An unknown tool name is refused here rather than silently shutting
+    a token out of a tool it was meant to have: a typo that narrows quietly is
+    a support thread.
+    """
+    if not stored:
+        return ()
+    if not isinstance(stored, dict):
+        raise ConfigError(
+            'tokens is an object of name → {"token": …, "tools": [...]}, '
+            f"not {type(stored).__name__}"
+        )
+    found: list[tuple[str, str, frozenset[str]]] = []
+    for name, entry in stored.items():
+        # `_name` keys are the comments this file is documented with.
+        if name.startswith("_"):
+            continue
+        if isinstance(entry, str):
+            entry = {"token": entry}
+        if not isinstance(entry, dict):
+            raise ConfigError(f"tokens.{name} is an object, not {entry!r}")
+        token = str(entry.get("token") or "").strip()
+        if not token:
+            raise ConfigError(f"tokens.{name} has no token")
+        named = entry.get("tools")
+        if named is None:
+            found.append((name, token, TOOL_NAMES))
+            continue
+        if not isinstance(named, list):
+            raise ConfigError(f"tokens.{name}.tools is a list of tool names")
+        unknown = sorted(set(map(str, named)) - TOOL_NAMES)
+        if unknown:
+            raise ConfigError(
+                f"tokens.{name}.tools: no such tool {', '.join(unknown)} — "
+                f"the tools are {', '.join(sorted(TOOL_NAMES))}"
+            )
+        found.append((name, token, frozenset(map(str, named))))
+    return tuple(found)
 
 
 def _number(name: str, value) -> int:

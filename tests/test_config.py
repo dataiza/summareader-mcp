@@ -15,6 +15,7 @@ from summareader_mcp.config import (
     default_config_path,
     stranded_library,
 )
+from summareader_mcp.tools import TOOL_NAMES
 
 KEY = base64.b64encode(bytes(range(32))).decode()
 
@@ -118,6 +119,86 @@ class TestTheBearerToken:
             environment={"SUMMAREADER_MCP_TOKEN": "from-the-environment"},
         )
         assert config.bearer_token == "from-the-environment"
+
+
+class TestNamedTokens:
+    """Several tokens, each opening the tools it was given.
+
+    The bare `bearer_token` is unchanged and still opens everything, because
+    it is in every documented example and in units nobody is going to edit.
+    """
+
+    def test_a_token_with_its_own_tools(self, tmp_path):
+        config = Config.load(
+            file=write(tmp_path, tokens={
+                "search-only": {"token": "abc", "tools": ["search_library"]},
+            }),
+            environment={},
+        )
+        assert config.tool_tokens == {"abc": frozenset({"search_library"})}
+
+    def test_no_tools_listed_means_all_of_them(self, tmp_path):
+        config = Config.load(
+            file=write(tmp_path, tokens={"full": {"token": "abc"}}), environment={}
+        )
+        assert config.tool_tokens == {"abc": TOOL_NAMES}
+
+    def test_the_bare_token_goes_on_opening_everything(self, tmp_path):
+        config = Config.load(
+            file=write(tmp_path, bearer_token="legacy", tokens={
+                "search-only": {"token": "abc", "tools": ["search_library"]},
+            }),
+            environment={},
+        )
+        assert config.tool_tokens == {
+            "abc": frozenset({"search_library"}),
+            "legacy": TOOL_NAMES,
+        }
+
+    def test_a_tool_that_does_not_exist_is_refused_with_the_list(self, tmp_path):
+        # A typo here narrows a token silently, which is a support thread.
+        with pytest.raises(ConfigError) as raised:
+            Config.load(
+                file=write(tmp_path, tokens={
+                    "oops": {"token": "abc", "tools": ["serch_library"]},
+                }),
+                environment={},
+            )
+        assert "serch_library" in str(raised.value)
+        assert "search_library" in str(raised.value)
+
+    def test_an_entry_with_no_token_says_which(self, tmp_path):
+        with pytest.raises(ConfigError, match="reports"):
+            Config.load(
+                file=write(tmp_path, tokens={"reports": {"tools": []}}), environment={}
+            )
+
+    def test_comment_keys_are_skipped_like_everywhere_else_in_the_file(self, tmp_path):
+        config = Config.load(
+            file=write(tmp_path, tokens={
+                "_comment": "what this block is for",
+                "one": {"token": "abc", "tools": []},
+            }),
+            environment={},
+        )
+        assert config.tool_tokens == {"abc": frozenset()}
+
+    def test_a_library_config_keeps_its_credentials(self, tmp_path):
+        # This branch used to drop bearer_token on the floor: a `library`
+        # config with a token in it was an unguarded port.
+        config = Config.load(
+            file=write(
+                tmp_path,
+                library=str(tmp_path / "l.sqlite"),
+                bearer_token="legacy",
+                tokens={"one": {"token": "abc", "tools": ["read_item"]}},
+            ),
+            environment={},
+        )
+        assert config.tool_tokens == {
+            "abc": frozenset({"read_item"}),
+            "legacy": TOOL_NAMES,
+        }
 
 
 class TestReadingALibraryDirectly:

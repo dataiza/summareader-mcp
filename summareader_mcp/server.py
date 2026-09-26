@@ -7,6 +7,7 @@ keeps working. What changed is that they now answer.
 
 from __future__ import annotations
 
+import json
 import logging
 import secrets
 import sys
@@ -17,10 +18,10 @@ from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse, Response
+from starlette.responses import JSONResponse, PlainTextResponse, Response
 
 from . import __version__, tools
-from .tools import parse_since
+from .tools import TOOL_NAMES, parse_since
 from .config import Config
 from .metrics import Metrics
 from .store import open_store
@@ -64,7 +65,7 @@ def serve(
     store = open_store(config.database, read_only=config.reads_a_local_library)
     metrics = Metrics()
 
-    if transport == "http" and not config.bearer_token:
+    if transport == "http" and not config.tool_tokens:
         log.warning(
             "no bearer_token — this port serves the whole library in plaintext to "
             "anything that can reach it. Set one, or bind it somewhere private."
@@ -110,8 +111,8 @@ def serve(
         # so the whole library answered anyone who could reach this port. The
         # app is the same one `run` would have built.
         app = server.streamable_http_app(host=host)
-        if config.bearer_token:
-            app = _guarded(app, config.bearer_token)
+        if config.tool_tokens:
+            app = _guarded(app, config.tool_tokens)
         _run_http(app, host, port)
     else:
         server.run(transport="stdio")
@@ -285,30 +286,56 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
 
 
 def _authorised(request: Request, config: Config) -> bool:
-    """The same token the tools need.
+    """Any token this server knows, whatever tools it opens.
 
-    A second credential for /metrics would be ceremony: this process holds the
-    master key and a plaintext copy of the library, so anything that can reach
-    the port and pass the first check can already ask it for the articles.
+    /metrics is deliberately outside the per-tool scheme: it is not one of the
+    tools and not an MCP call at all, and it answers in counts — how many
+    articles, how many pulls, when the last one was — never in library text.
+    Giving it a tick would put a non-tool into the vocabulary the config file
+    and every tool set are written in, to gate numbers that say less than
+    `library_summary` does. A second credential for it would be ceremony too:
+    this process holds the master key and a plaintext copy of the library.
     """
-    if not config.bearer_token:
+    tokens = config.tool_tokens
+    if not tokens:
         return True
-    header = request.headers.get("authorization", "")
-    return _matches(header, config.bearer_token)
+    return _opens(request.headers.get("authorization", ""), tokens) is not None
 
 
-def _matches(header: str, token: str) -> bool:
-    return secrets.compare_digest(header.removeprefix("Bearer ").strip(), token)
+def _opens(header: str, tokens: dict[str, frozenset[str]]) -> frozenset[str] | None:
+    """What the presented token may call, or None when it is not one of ours.
+
+    Every candidate is compared, and compared with `compare_digest`, rather
+    than stopping at the first hit: a dict lookup on the secret would answer
+    in a time that depends on it.
+    """
+    presented = header.removeprefix("Bearer ").strip()
+    opens = None
+    for token, tools in tokens.items():
+        if secrets.compare_digest(presented, token):
+            opens = tools
+    return opens
 
 
-def _guarded(app, token: str):
+def _guarded(app, tokens: dict[str, frozenset[str]]):
     """Bearer auth in front of the whole app, /health excepted.
 
     ASGI rather than Starlette middleware because the app is already built and
     this is one `if`. /health stays open on purpose — a health check that needs
     a credential is one somebody's orchestrator cannot make, and it answers
-    "ok" and nothing else. /metrics checks the same token again on its own; the
-    second check costs nothing and keeps that route right under stdio too.
+    "ok" and nothing else. /metrics checks the same tokens again on its own;
+    the second check costs nothing and keeps that route right under stdio too.
+
+    An unknown token is 401 as it always was. A known one that was not given
+    the tool it is calling gets an ordinary JSON-RPC error frame back, because
+    that is what a client — and the `forward` subcommand carrying frames
+    between one — knows how to show. `forward` is not asked to understand any
+    of this; it carries the refusal like any other answer.
+
+    ponytail: a restricted token still sees all seven in `tools/list`; it is
+    refused when it calls one. Filtering the list means rewriting a response
+    that may be an SSE stream, for cosmetics. Do it if an agent's confusion
+    ever costs more than that.
     """
 
     async def guard(scope, receive, send):
@@ -320,12 +347,82 @@ def _guarded(app, token: str):
             if key == b"authorization":
                 header = value.decode("latin-1")
                 break
-        if _matches(header, token):
-            await app(scope, receive, send)
+        opens = _opens(header, tokens)
+        if opens is None:
+            await PlainTextResponse("unauthorized\n", status_code=401)(
+                scope, receive, send
+            )
             return
-        await PlainTextResponse("unauthorized\n", status_code=401)(scope, receive, send)
+        if opens != TOOL_NAMES:
+            # The body is read only for a token that cannot call everything,
+            # so the ordinary all-tools install is the same bytes it was.
+            body, receive = await _buffered(receive)
+            refusal = _refused(body, opens)
+            if refusal is not None:
+                await JSONResponse(refusal)(scope, receive, send)
+                return
+        await app(scope, receive, send)
 
     return guard
+
+
+async def _buffered(receive):
+    """The request body, and a `receive` that still hands it to the app."""
+    chunks: list[bytes] = []
+    tail = None
+    while True:
+        message = await receive()
+        if message["type"] != "http.request":
+            tail = message
+            break
+        chunks.append(message.get("body", b""))
+        if not message.get("more_body", False):
+            break
+    body = b"".join(chunks)
+    replayed = [{"type": "http.request", "body": body, "more_body": False}]
+    if tail is not None:
+        replayed = [tail]
+
+    async def replay():
+        return replayed.pop(0) if replayed else await receive()
+
+    return body, replay
+
+
+def _refused(body: bytes, opens: frozenset[str]) -> dict | None:
+    """An error frame for the first tool call this token was not given, if any.
+
+    A body that is not a JSON-RPC call — an initialize, a ping, a notification,
+    something unparseable — is not this function's business and goes through to
+    the app, which has its own opinion about it.
+
+    ponytail: a batch with one refused call in it is refused whole, rather than
+    answered frame by frame. Nothing sends batches here; split it per frame if
+    something starts to.
+    """
+    try:
+        parsed = json.loads(body or b"")
+    except ValueError:
+        return None
+    frames = parsed if isinstance(parsed, list) else [parsed]
+    for frame in frames:
+        if not isinstance(frame, dict) or frame.get("method") != "tools/call":
+            continue
+        params = frame.get("params")
+        name = params.get("name") if isinstance(params, dict) else None
+        if isinstance(name, str) and name not in opens:
+            log.info("refused %s: this token does not open it", name)
+            return {
+                "jsonrpc": "2.0",
+                "id": frame.get("id"),
+                "error": {
+                    # Not found rather than forbidden: as far as this caller is
+                    # concerned the tool is not there to call.
+                    "code": -32601,
+                    "message": f"{name} is not open to this token",
+                },
+            }
+    return None
 
 
 class Syncer:
