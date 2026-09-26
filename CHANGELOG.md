@@ -4,7 +4,7 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
-## Unreleased
+## 0.10.0
 
 A token per set of tools. The HTTP port had one `bearer_token`, and it opened
 all seven tools — so a reader who wanted an agent to search the library but
