@@ -6,6 +6,40 @@ it.
 
 ## Unreleased
 
+A token per set of tools. The HTTP port had one `bearer_token`, and it opened
+all seven tools — so a reader who wanted an agent to search the library but
+not to read whole articles had nothing to say. `tokens` in the config file now
+holds named tokens, each with the tools it opens:
+
+```json
+"tokens": {
+  "search-only": { "token": "…", "tools": ["search_library", "library_summary"] }
+}
+```
+
+All seven are still reads; nothing here writes to a library. The line the
+subsets are for is between the tools that hand back whole article text —
+`read_item`, `library_report` — and the ones that hand back titles and counts.
+
+`bearer_token` is untouched and still opens everything. It is in every example
+and in whatever unit or compose file is already installed, so it keeps meaning
+what it meant; the narrower tokens sit beside it. A tool name that does not
+exist is refused when the file is read, rather than quietly shutting a token
+out of a tool it was meant to have.
+
+A token calling a tool it was not given gets an ordinary MCP error frame back
+rather than a 401: it is a known caller asking for something it does not have,
+and a client — or `forward`, which carries frames and is not asked to
+understand any of this — shows it like any other answer. An unknown token is
+still a 401, and the library is never reached.
+
+`/metrics` stays outside the scheme and takes any token the server knows. It
+is not one of the tools, it is not an MCP call, and it answers in counts.
+
+Also fixed while in here: a config file with `library` set dropped its
+`bearer_token` on the way in, so a library read in place was served over an
+unguarded port.
+
 `summareader-mcp forward` — stdin and stdout on one side, the SummaReader
 app's own MCP door on the other. Most desktop clients are configured with a
 command to run and the app is a window, so there was no way to point one at

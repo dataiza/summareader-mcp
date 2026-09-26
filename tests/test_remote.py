@@ -199,6 +199,15 @@ class TestWhenATokenIsSet:
         found = remote(token="s3cret").search("rust")
         assert [i.id for i in found] == ["rust"]
 
+def test_a_refusal_over_a_tool_is_not_blamed_on_the_token():
+    # The token was right; the tool was not one it opens. Telling somebody to
+    # go and check their token would send them after the wrong thing.
+    from mcp.shared.exceptions import MCPError
+    from summareader_mcp.store.remote import _explain
+
+    error = MCPError(-32601, "read_item is not open to this token")
+    assert "SUMMAREADER_MCP_TOKEN" not in _explain(error, "s3cret")
+
 
 async def test_the_terminal_interface_reads_a_remote_mirror(served):
     """The whole point: the TUI as a client of a server in another process."""

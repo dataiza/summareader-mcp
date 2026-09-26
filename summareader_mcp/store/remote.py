@@ -249,6 +249,10 @@ def _explain(error: BaseException, token: str | None) -> str:
     """
     leaf = _leaf(error)
     text = str(leaf) or leaf.__class__.__name__
+    if "not open to this token" in text:
+        # A server that knows this token and did not give it this tool. The
+        # token is not the thing to go and check.
+        return text
     if isinstance(leaf, MCPError):
         text += (
             " — check SUMMAREADER_MCP_TOKEN against the server's bearer_token"

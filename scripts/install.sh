@@ -109,8 +109,12 @@ fi
 
 has_bearer_token() {
   # Either spelling: `http_token` is what older configs call it, and the
-  # server still reads them.
-  grep -qE '"(bearer|http)_token"[[:space:]]*:[[:space:]]*"[^"]+"' "$config"
+  # server still reads them. A `tokens` block counts too — a config whose
+  # credentials are all named ones is guarded, and refusing it would be this
+  # script disagreeing with the server it installs.
+  grep -qE '"(bearer|http)_token"[[:space:]]*:[[:space:]]*"[^"]+"' "$config" ||
+      { grep -qE '"tokens"[[:space:]]*:[[:space:]]*\{' "$config" &&
+      ! grep -qE '"tokens"[[:space:]]*:[[:space:]]*\{[[:space:]]*\}' "$config"; }
 }
 
 # Loopback is one machine's business. Anything wider publishes the whole

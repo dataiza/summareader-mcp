@@ -8,6 +8,7 @@ is that gap closed.
 
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,6 +18,7 @@ import pytest
 from summareader_mcp import server as server_module
 from summareader_mcp.config import Config
 from summareader_mcp.store import open_store
+from summareader_mcp.tools import TOOL_NAMES
 
 
 @pytest.fixture
@@ -226,25 +228,137 @@ class TestTheTokenGuardsTheTools:
         await send({"type": "http.response.start", "status": 200, "headers": []})
         await send({"type": "http.response.body", "body": b"the library"})
 
+    def _all(self, token="secret"):
+        return {token: TOOL_NAMES}
+
     async def test_no_token_is_401_rather_than_the_library(self):
-        guarded = server_module._guarded(self._inner, "secret")
+        guarded = server_module._guarded(self._inner, self._all())
         assert (await self._get(guarded, "/mcp"))[0]["status"] == 401
 
     async def test_the_wrong_token_is_401_too(self):
-        guarded = server_module._guarded(self._inner, "secret")
+        guarded = server_module._guarded(self._inner, self._all())
         sent = await self._get(guarded, "/mcp", [(b"authorization", b"Bearer nope")])
         assert sent[0]["status"] == 401
 
     async def test_the_right_one_gets_through(self):
-        guarded = server_module._guarded(self._inner, "secret")
+        guarded = server_module._guarded(self._inner, self._all())
         sent = await self._get(guarded, "/mcp", [(b"authorization", b"Bearer secret")])
         assert sent[0]["status"] == 200
 
     async def test_health_stays_open(self):
         # An orchestrator's health check has no credential to offer, and this
         # route answers "ok" and nothing about the library.
-        guarded = server_module._guarded(self._inner, "secret")
+        guarded = server_module._guarded(self._inner, self._all())
         assert (await self._get(guarded, "/health"))[0]["status"] == 200
+
+
+class TestEachTokenOpensItsOwnTools:
+    """Several named tokens, each with a subset of the seven.
+
+    A reader who wants an agent to search the library but not to read whole
+    articles says so by giving it a token with `search_library` on it and not
+    `read_item`. The old single token, which is what every documented example
+    and every unit file already has, goes on opening all seven.
+    """
+
+    async def _call(self, tokens, token, tool, *, path="/mcp"):
+        """POST a tools/call frame through the guard. Returns (status, body)."""
+        reached: list[bytes] = []
+        sent: list[dict] = []
+
+        async def inner(scope, receive, send):
+            reached.append((await receive()).get("body", b""))
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"the library"})
+
+        frame = json.dumps(
+            {"jsonrpc": "2.0", "id": 7, "method": "tools/call",
+             "params": {"name": tool, "arguments": {}}}
+        ).encode()
+        scope = {
+            "type": "http",
+            "path": path,
+            "method": "POST",
+            "headers": [(b"authorization", f"Bearer {token}".encode())],
+        }
+
+        async def receive():
+            return {"type": "http.request", "body": frame, "more_body": False}
+
+        async def send(message):
+            sent.append(message)
+
+        await server_module._guarded(inner, tokens)(scope, receive, send)
+        body = b"".join(m.get("body", b"") for m in sent if m["type"] == "http.response.body")
+        return sent[0]["status"], body, reached
+
+    def _tokens(self):
+        return {
+            "searcher": frozenset({"search_library", "library_summary"}),
+            "everything": TOOL_NAMES,
+        }
+
+    async def test_a_token_nobody_issued_is_401(self):
+        status, _, reached = await self._call(self._tokens(), "made-up", "search_library")
+        assert status == 401 and reached == []
+
+    async def test_a_tool_this_token_was_not_given_comes_back_as_an_error_frame(self):
+        # Not a 401: the call was authorised, this tool was not. The frame is
+        # what `forward` carries back without knowing anything about tools.
+        status, body, reached = await self._call(self._tokens(), "searcher", "read_item")
+        assert status == 200
+        answer = json.loads(body)
+        assert answer["id"] == 7
+        assert "read_item" in answer["error"]["message"]
+        # And the library was never asked.
+        assert reached == []
+
+    async def test_a_tool_it_was_given_goes_through_body_and_all(self):
+        status, body, reached = await self._call(
+            self._tokens(), "searcher", "search_library"
+        )
+        assert status == 200 and body == b"the library"
+        # The body the guard read is still the body the app receives.
+        assert json.loads(reached[0])["params"]["name"] == "search_library"
+
+    async def test_the_legacy_bare_token_still_opens_everything(self):
+        config = Config(
+            server="", token="", master_key=b"", cache_dir=Path("."),
+            bearer_token="old-one",
+        )
+        assert config.tool_tokens == {"old-one": TOOL_NAMES}
+        for tool in sorted(TOOL_NAMES):
+            status, body, _ = await self._call(config.tool_tokens, "old-one", tool)
+            assert (status, body) == (200, b"the library"), tool
+
+    async def test_a_named_token_and_the_bare_one_live_side_by_side(self):
+        config = Config(
+            server="", token="", master_key=b"", cache_dir=Path("."),
+            bearer_token="old-one",
+            tokens=(("searcher", "narrow", frozenset({"search_library"})),),
+        )
+        assert config.tool_tokens == {
+            "narrow": frozenset({"search_library"}),
+            "old-one": TOOL_NAMES,
+        }
+
+    async def test_anything_that_is_not_a_tool_call_is_left_alone(self):
+        # initialize, ping, notifications: the guard has no opinion, and a
+        # restricted token still has to be able to open a session.
+        assert server_module._refused(b'{"method": "initialize", "id": 1}', frozenset()) is None
+        assert server_module._refused(b"not json at all", frozenset()) is None
+
+    async def test_metrics_takes_any_token_this_server_knows(self):
+        # Decided: /metrics is outside the per-tool scheme. It is not one of
+        # the seven and not an MCP call, and it answers in counts.
+        config = Config(
+            server="", token="", master_key=b"", cache_dir=Path("."),
+            tokens=(("searcher", "narrow", frozenset({"search_library"})),),
+        )
+        request = SimpleNamespace(headers={"authorization": "Bearer narrow"})
+        assert server_module._authorised(request, config)
+        stranger = SimpleNamespace(headers={"authorization": "Bearer nope"})
+        assert not server_module._authorised(stranger, config)
 
 
 class TestTheLoopWatchesTheConfigFile:

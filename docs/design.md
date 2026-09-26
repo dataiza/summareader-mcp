@@ -110,6 +110,28 @@ For a while the token guarded `/metrics` and nothing else, while the MCP
 endpoint — every tool, the whole library — answered anyone who could reach the
 port. It now guards the whole app, `/health` excepted.
 
+## Why a token can open some tools and not others
+
+One token for seven tools meant the only two settings were *everything* and
+*nothing*, and the interesting line runs between them: `read_item` and
+`library_report` hand back whole articles, `search_library` and
+`library_summary` hand back titles and counts. An agent that should find
+things without reading them had no way to be told so. `tokens` in the config
+file names tokens and gives each the subset it opens; `bearer_token` is
+unchanged and still opens all seven, because it is in every example and in
+installed units, and quietly narrowing it would break them.
+
+The check sits in the same ASGI guard as the token itself, which reads the
+tools/call frame's name and hands back a JSON-RPC error for a tool this token
+was not given. The refusal is an error frame rather than a 401 because the
+caller is known — and because `forward` carries frames and is deliberately
+ignorant of what is in them. The guard reads the body only for a token that
+cannot call everything, so the ordinary install is untouched.
+
+`/metrics` stays out of the scheme. It is not one of the tools and not an MCP
+call, it answers in counts, and a tick for it would put a non-tool into the
+vocabulary the config file and every tool set are written in.
+
 ## Why `host` and `port` live in the config file
 
 The console writes them there. An address chosen in a window that comes back
