@@ -198,6 +198,7 @@ class Store:
         tags: Iterable[str] | None = None,
         groups: Iterable[str] | None = None,
         limit: int = 20,
+        offset: int = 0,
     ) -> list[Item]:
         """Everything matching, newest first.
 
@@ -297,13 +298,22 @@ class Store:
             {_SUMMARY_JOIN}
             LEFT JOIN extracted_texts t ON t.item_id = i.id
             {"WHERE " + " AND ".join(where) if where else ""}
-            ORDER BY coalesce(i.published_at, i.fetched_at) DESC
-            LIMIT ?
+            ORDER BY coalesce(i.published_at, i.fetched_at) DESC, i.id DESC
+            LIMIT ? OFFSET ?
         """
-        return [self._item(row) for row in self._db.execute(sql, [*args, limit])]
+        # The id last, and always. Ordering by the date alone is only partial,
+        # and SQLite returns rows that tie in whatever order it likes — which
+        # does not matter within one page and ruins two: a feed that hands
+        # over thirty articles in one poll gives them all one timestamp, so
+        # page two of an offset walk repeats some of page one and skips the
+        # rest.
+        return [
+            self._item(row)
+            for row in self._db.execute(sql, [*args, limit, max(0, offset)])
+        ]
 
-    def recent(self, limit: int = 20) -> list[Item]:
-        return self.search(limit=limit)
+    def recent(self, limit: int = 20, offset: int = 0) -> list[Item]:
+        return self.search(limit=limit, offset=offset)
 
     def item(self, item_id: str) -> Item | None:
         rows = self.search_by_id(item_id)

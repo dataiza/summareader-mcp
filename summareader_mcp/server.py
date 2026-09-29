@@ -139,7 +139,9 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
             "several narrow rather than widen. `groups` matches the group a "
             "source is filed under, by title or id — and several *widen*, "
             "because a source is in at most one group, so asking for two as "
-            "an `and` asks for something that cannot exist. Newest first."
+            "an `and` asks for something that cannot exist. Newest first. "
+            "`limit` caps the page and `offset` asks for the next one; the "
+            "answer carries the offset it used and whether more follows."
         ),
     )
     def search_library(
@@ -155,6 +157,7 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
         tags: list[str] | None = None,
         groups: list[str] | None = None,
         limit: int = 20,
+        offset: int = 0,
     ) -> dict:
         return tools.search_library(
             store,
@@ -170,14 +173,18 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
             tags=tags,
             groups=groups,
             limit=limit,
+            offset=offset,
         )
 
     @server.tool(
         name="recent_items",
-        description="The most recently published articles in the library.",
+        description=(
+            "The most recently published articles in the library. `limit` "
+            "caps the page and `offset` asks for the next one."
+        ),
     )
-    def recent_items(limit: int = 20) -> dict:
-        return tools.recent_items(store, limit=limit)
+    def recent_items(limit: int = 20, offset: int = 0) -> dict:
+        return tools.recent_items(store, limit=limit, offset=offset)
 
     @server.tool(
         name="list_tags",
@@ -234,7 +241,10 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
             "takes 3h, 7d, 3w, or a date like 2026-08-01. `tags` matches an "
             "article's own tags or the tags of the feed it came from, and "
             "several narrow rather than widen. `groups` matches the group a "
-            "source is filed under, by title or id, and several widen."
+            "source is filed under, by title or id, and several widen. The "
+            "report covers one page: `limit` caps it and `offset` starts it "
+            "that many articles in, so a report written with an offset begins "
+            "partway through and does not say so."
         ),
     )
     def library_report(
@@ -251,6 +261,7 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
         groups: list[str] | None = None,
         fmt: str = "md",
         limit: int = 50,
+        offset: int = 0,
     ) -> str:
         return tools.library_report(
             store,
@@ -267,6 +278,7 @@ def _register(server: MCPServer, store, metrics: Metrics, config: Config) -> Non
             groups=groups,
             fmt=fmt,
             limit=limit,
+            offset=offset,
         )
 
     @server.custom_route("/health", methods=["GET"])

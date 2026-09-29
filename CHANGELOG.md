@@ -4,6 +4,24 @@ The version a release is tagged with is the one in `summareader_mcp/__init__.py`
 and the release workflow refuses to publish without a section here that names
 it.
 
+## 0.11.0
+
+Paging. `search_library`, `recent_items` and `library_report` could say how
+many articles to return and never where to start, so a library larger than one
+page could not be walked at all — a client asking for more than the cap was
+given the cap and had no way to ask for the rest. All three now take `offset`,
+and answer with the `offset` they used and whether another page follows.
+
+The cap stays where it was. It is not the limitation: one response carrying
+thousands of articles and their text is a worse answer than four carrying a
+page each.
+
+The ordering had no tiebreak, which paging turns from a curiosity into a
+defect. Articles sharing a publication timestamp — a feed delivering thirty at
+once gives them all the same one — came back in whatever order SQLite chose,
+differently between one query and the next, so page two repeated part of page
+one and skipped the rest. The id now settles every tie.
+
 ## 0.10.0
 
 A token per set of tools. The HTTP port had one `bearer_token`, and it opened

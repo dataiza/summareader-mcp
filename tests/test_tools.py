@@ -156,3 +156,34 @@ def test_list_groups_names_the_vocabulary_groups_narrows_by(library):
 
 def test_an_empty_library_has_no_groups(store):
     assert tools.list_groups(store) == {"found": 0, "groups": []}
+
+
+def test_offset_walks_the_library_once(store):
+    """Ten articles sharing one timestamp, walked four at a time.
+
+    Every row ties on the date — which is what a feed handing over its back
+    catalogue in one poll produces — so it is the tiebreak in the ordering and
+    nothing else that keeps page two from repeating page one.
+    """
+    store.apply_all([item(f"i{n}") for n in range(10)])
+
+    seen: list[str] = []
+    for start in (0, 4, 8):
+        page = tools.search_library(store, limit=4, offset=start)
+        assert page["offset"] == start
+        seen += [i["id"] for i in page["items"]]
+
+    assert len(set(seen)) == 10
+    assert tools.search_library(store, limit=4)["more"] is True
+    assert tools.search_library(store, limit=4, offset=8)["more"] is False
+
+
+def test_recent_items_pages_the_same_way(store):
+    store.apply_all([item(f"i{n}") for n in range(6)])
+
+    first = tools.recent_items(store, limit=3)
+    second = tools.recent_items(store, limit=3, offset=3)
+
+    assert second["offset"] == 3
+    assert second["more"] is False
+    assert len({i["id"] for i in first["items"] + second["items"]}) == 6

@@ -120,7 +120,10 @@ def search_library(
     tags: list[str] | None = None,
     groups: list[str] | None = None,
     limit: int = 20,
+    offset: int = 0,
 ) -> dict[str, Any]:
+    capped = max(1, min(limit, 100))
+    start = max(0, offset)
     items = store.search(
         query,
         title=title,
@@ -133,18 +136,36 @@ def search_library(
         summarized=summarized,
         tags=tags,
         groups=groups,
-        limit=max(1, min(limit, 100)),
+        limit=capped + 1,
+        offset=start,
     )
+    return {"query": query, **_page(store, items, capped, start)}
+
+
+def recent_items(store: Store, limit: int = 20, offset: int = 0) -> dict[str, Any]:
+    capped = max(1, min(limit, 100))
+    start = max(0, offset)
+    return _page(store, store.recent(limit=capped + 1, offset=start), capped, start)
+
+
+def _page(store: Store, items: list, limit: int, offset: int) -> dict[str, Any]:
+    """One page, and whether another follows it.
+
+    Asked by fetching one row past the page and dropping it, rather than by
+    counting the whole answer a second time. A short page on its own cannot
+    say whether the library ran out or the cap cut it, and a caller that
+    guesses wrong either stops early or asks forever.
+
+    `found` stays the length of what came back, as it always was: `offset` and
+    `more` go beside it rather than in place of it.
+    """
+    page = items[:limit]
     return {
-        "query": query,
-        "found": len(items),
-        "items": _items(store, items),
+        "found": len(page),
+        "offset": offset,
+        "more": len(items) > limit,
+        "items": _items(store, page),
     }
-
-
-def recent_items(store: Store, limit: int = 20) -> dict[str, Any]:
-    items = store.recent(limit=max(1, min(limit, 100)))
-    return {"found": len(items), "items": _items(store, items)}
 
 
 def list_groups(store: Store) -> dict[str, Any]:
@@ -216,6 +237,7 @@ def library_report(
     groups: list[str] | None = None,
     fmt: str = "md",
     limit: int = 50,
+    offset: int = 0,
 ) -> str:
     """The same query as `search_library`, written out instead of returned.
 
@@ -237,6 +259,7 @@ def library_report(
         tags=tags,
         groups=groups,
         limit=max(1, min(limit, 500)),
+        offset=max(0, offset),
     )
     heading = "Library report" if not query else f"Library report — {query}"
     return render(items, fmt, title=heading)

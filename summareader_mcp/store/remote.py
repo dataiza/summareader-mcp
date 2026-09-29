@@ -61,6 +61,7 @@ class RemoteStore:
         summarized: bool | None = None,
         tags: Iterable[str] | None = None,
         limit: int = 20,
+        offset: int = 0,
     ) -> list[Item]:
         payload = self._call(
             "search_library",
@@ -79,12 +80,13 @@ class RemoteStore:
                 "summarized": summarized,
                 "tags": list(tags) if tags else None,
                 "limit": limit,
+                "offset": offset,
             },
         )
         return [_item(row) for row in payload.get("items", [])]
 
-    def recent(self, limit: int = 20) -> list[Item]:
-        payload = self._call("recent_items", {"limit": limit})
+    def recent(self, limit: int = 20, offset: int = 0) -> list[Item]:
+        payload = self._call("recent_items", {"limit": limit, "offset": offset})
         return [_item(row) for row in payload.get("items", [])]
 
     def item(self, item_id: str) -> Item | None:
