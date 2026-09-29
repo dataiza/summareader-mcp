@@ -17,10 +17,12 @@ name: Release
 # cross-compiles. A frozen bundle is the interpreter and the libc of the
 # machine that froze it, and a Flutter desktop build is the machine it was
 # built on. So the machine decides, and produces both of its downloads at once.
+# Archived 2026-09-29: the tag trigger is gone, so pushing a tag here
+# publishes nothing. `workflow_dispatch` is kept so the build can still
+# be run by hand if this is ever revived — it publishes nothing either,
+# because the publish step needs a tag to name the release after.
 on:
   workflow_dispatch:
-  push:
-    tags: ['v*']
 
 # **GitHub-hosted runners, deliberately.** This repository is public, so
 # standard hosted runners cost nothing — which removes the only reason to point

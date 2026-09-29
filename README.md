@@ -1,5 +1,25 @@
 # summareader-mcp
 
+> **No longer maintained, as of 2026-09-29.** The app's own MCP door supersedes
+> it and is where the work goes now: it offers fifty tools against the live
+> library — every read this server had, plus writing, tagging, filing and
+> driving the app — where this one offered seven, read-only, against a synced
+> copy. The one thing it did that the app's door cannot is answer while the app
+> is closed, which is what a headless device in the sync group buys you; that
+> turned out not to be needed.
+>
+> Nothing here has been deleted. The published releases up to **v0.11.0** stay
+> downloadable and keep working against the sync protocol as it stands, and the
+> tags stay in place. What has stopped is releasing: no new versions will be
+> cut, and new tools are not being ported across. If a headless always-on
+> device is ever wanted again, this is the thing to revive rather than rebuild.
+>
+> ⛔ **The two doors have drifted**, so do not read this server's tool
+> descriptions as describing the app's. `source` here matches an article's
+> primary feed; in the app it matches any feed the article arrived through.
+> Prompts written against one are no longer guaranteed against the other.
+
+
 An MCP server over your SummaReader library. It pairs with the sync server **as
 a device**, keeps a decrypted copy, and answers questions about what you have
 read. It reads; it never writes.
