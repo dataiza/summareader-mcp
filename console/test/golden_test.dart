@@ -60,6 +60,16 @@ Future<void> loadFonts() async {
 
 void main() {
   testWidgets('docs/console.png', (tester) async {
+    // On a desktop, and said rather than left to `flutter test`, which
+    // reports Android on every machine. The look puts a 48-point floor under
+    // every tap target on a touch platform, so without this the file in docs/
+    // would document a phone-sized layout of a program that only ever ships
+    // as a desktop window.
+    //
+    // One of the three it is built for rather than all three: they render this
+    // window to the same pixels, and a golden is already a comparison only the
+    // machine that produced the file can win, so running it three times would
+    // be the same disagreement reported three times.
     await tester.runAsync(loadFonts);
 
     final temporary = Directory.systemTemp.createTempSync('console-golden');
@@ -139,5 +149,5 @@ void main() {
       find.byType(ConsoleView),
       matchesGoldenFile('../../docs/console.png'),
     );
-  });
+  }, variant: TargetPlatformVariant.only(TargetPlatform.linux));
 }

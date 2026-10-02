@@ -25,8 +25,16 @@ fi
 
 # --delete, because a widget removed there has to disappear here too: a stale
 # file that still compiles is the kind of drift nobody notices.
+#
+# .dart_tool and pubspec.lock are excluded because `pub get` in the app's own
+# checkout leaves them inside that package, and they are that checkout's
+# answer rather than part of the look. Both are gitignored here, so copying
+# them left `git status` clean and only vendored_ui_test, which reads the
+# directory rather than the index, had anything to say about it.
 rsync -a --delete \
   --exclude VENDORED.md \
+  --exclude .dart_tool \
+  --exclude pubspec.lock \
   "$app/packages/summareader_ui/" "$here/console/packages/summareader_ui/"
 
 # The two faces the package asks for. A package cannot carry the assets an

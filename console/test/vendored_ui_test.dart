@@ -59,7 +59,18 @@ void main() {
 }
 
 /// Every file under [root], by its path relative to it, with its bytes.
-Map<String, String> _files(Directory root) => {
-  for (final entry in root.listSync(recursive: true).whereType<File>())
-    entry.path.substring(root.path.length + 1): entry.readAsStringSync(),
-};
+Map<String, String> _files(Directory root) {
+  final files = <String, String>{};
+  for (final entry in root.listSync(recursive: true).whereType<File>()) {
+    final name = entry.path.substring(root.path.length + 1);
+    // Minus what `pub get` leaves behind. Resolving that package in the app's
+    // own checkout writes a .dart_tool and a pubspec.lock inside it, and they
+    // are that checkout's answer about its own dependencies rather than part
+    // of the look — scripts/sync-ui.sh does not copy them for the same reason.
+    // Compared, they would make this fail over whether anybody had run
+    // `pub get` next door, which is nothing to do with drift.
+    if (name.startsWith('.dart_tool/') || name == 'pubspec.lock') continue;
+    files[name] = entry.readAsStringSync();
+  }
+  return files;
+}
